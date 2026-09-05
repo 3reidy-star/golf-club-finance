@@ -2,6 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -106,11 +107,7 @@ function makeSourceKey(
 
 function inferCategory(description: string) {
   const value = description.toLowerCase();
-
-  if (value.includes("curry")) {
-    return "Curry Cup Fees";
-  }
-
+  if (value.includes("curry")) return "Curry Cup Fees";
   return "Uncategorised";
 }
 
@@ -157,7 +154,6 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
 
     const transactionDate = parseDate(dateMatch[1]);
     const rest = dateMatch[2].trim();
-
     const typeMatch = rest.match(/^(.*?)\s+(FPI|FPO|SO|DD|DEB|TFR|BGC|CHQ|BP|CPT|ATM|CDM|POS)\s+(.+)$/i);
     if (!typeMatch) continue;
 
@@ -257,14 +253,9 @@ async function applySmartCategoriesToExisting() {
   await prisma.accountTransaction.updateMany({
     where: {
       category: "Uncategorised",
-      description: {
-        contains: "curry",
-        mode: "insensitive",
-      },
+      description: { contains: "curry", mode: "insensitive" },
     },
-    data: {
-      category: "Curry Cup Fees",
-    },
+    data: { category: "Curry Cup Fees" },
   });
 }
 
@@ -357,7 +348,17 @@ export async function updateTransactionCategory(formData: FormData) {
     throw new Error("Invalid category update.");
   }
 
-  await prisma.accountTransaction.update({ where: { id }, data: { category } });
-  revalidatePath("/accounts");
-  revalidatePath("/accounts/summary");
+  const updated = await prisma.accountTransaction.update({
+    where: { id },
+    data: { category },
+    select: { id: true, category: true },
+  });
+
+  if (updated.category !== category) {
+    throw new Error("The transaction category did not save correctly.");
+  }
+
+  revalidatePath("/accounts", "page");
+  revalidatePath("/accounts/summary", "page");
+  redirect("/accounts");
 }
