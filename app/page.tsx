@@ -52,8 +52,13 @@ export default async function Home() {
       ? [
           {
             title: "Accounts",
-            description: "Club and Men's accounts, transaction imports and categorisation.",
+            description: "Full Club and Men's transaction history, filters and categorisation.",
             href: "/accounts",
+          },
+          {
+            title: "Annual Accounts",
+            description: "Financial-year income, expenditure and category summary for AGM reporting.",
+            href: "/accounts/summary",
           },
         ]
       : []),
