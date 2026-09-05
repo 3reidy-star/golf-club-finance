@@ -29,6 +29,19 @@ export default auth((request) => {
   const role = user.role;
 
   /*
+    Every authenticated user can manage their own password.
+  */
+
+  if (
+    pathname === "/account/password" ||
+    pathname.startsWith(
+      "/account/password/",
+    )
+  ) {
+    return NextResponse.next();
+  }
+
+  /*
     Already logged in and visits /login.
   */
 
