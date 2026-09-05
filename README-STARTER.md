@@ -42,3 +42,5 @@ The 4% fee is stored on every request as a snapshot, rather than calculated from
 ## Next implementation step
 
 Create a Next.js project, add Prisma/Postgres, copy these files in, migrate the database, then build the four workflow screens: request, Treasurer approval, top-up confirmation and history.
+
+Deployment refreshed after resolving the production migration state on 5 September 2026.
