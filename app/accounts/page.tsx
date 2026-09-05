@@ -19,10 +19,7 @@ type SearchParams = Promise<{
 }>;
 
 function money(value: number) {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-  }).format(value);
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" }).format(value);
 }
 
 function parseFilterDate(value: string | undefined, endOfDay = false) {
@@ -31,20 +28,17 @@ function parseFilterDate(value: string | undefined, endOfDay = false) {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function pageHref(params: Record<string, string | undefined>, page: number) {
+function queryHref(params: Record<string, string | undefined>, page?: number) {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (value && key !== "page") query.set(key, value);
   }
-  query.set("page", String(page));
-  return `/accounts?${query.toString()}`;
+  if (page) query.set("page", String(page));
+  const qs = query.toString();
+  return qs ? `/accounts?${qs}` : "/accounts";
 }
 
-export default async function AccountsPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function AccountsPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   if (session.user.role !== "TREASURER") redirect("/");
@@ -58,31 +52,17 @@ export default async function AccountsPage({
   const toDate = parseFilterDate(params.to, true);
 
   const accounts = await prisma.financeAccount.findMany({
-    include: {
-      transactions: {
-        orderBy: [
-          { transactionDate: "asc" },
-          { createdAt: "asc" },
-        ],
-      },
-    },
+    include: { transactions: { orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }] } },
     orderBy: { name: "asc" },
   });
 
   const accountBalanceByCode = new Map<string, number>();
   const rowsWithBalance = accounts.flatMap((account) => {
     let runningBalance = Number(account.openingBalance);
-
     const rows = account.transactions.map((transaction) => {
       runningBalance += Number(transaction.credit) - Number(transaction.debit);
-      return {
-        ...transaction,
-        accountName: account.name,
-        accountCode: account.code,
-        runningBalance,
-      };
+      return { ...transaction, accountName: account.name, accountCode: account.code, runningBalance };
     });
-
     accountBalanceByCode.set(account.code, runningBalance);
     return rows;
   });
@@ -98,23 +78,17 @@ export default async function AccountsPage({
       if (searchFilter && !row.description.toLowerCase().includes(searchFilter)) return false;
       return true;
     })
-    .sort((a, b) => {
-      const dateDiff = b.transactionDate.getTime() - a.transactionDate.getTime();
-      if (dateDiff !== 0) return dateDiff;
-      return b.createdAt.getTime() - a.createdAt.getTime();
-    });
+    .sort((a, b) => b.transactionDate.getTime() - a.transactionDate.getTime() || b.createdAt.getTime() - a.createdAt.getTime());
 
   const uncategorised = filteredRows.filter((row) => row.category === "Uncategorised").length;
   const filteredCredit = filteredRows.reduce((total, row) => total + Number(row.credit), 0);
   const filteredDebit = filteredRows.reduce((total, row) => total + Number(row.debit), 0);
-
   const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
   const requestedPage = Number(params.page ?? "1");
-  const currentPage = Number.isFinite(requestedPage)
-    ? Math.min(Math.max(Math.trunc(requestedPage), 1), totalPages)
-    : 1;
+  const currentPage = Number.isFinite(requestedPage) ? Math.min(Math.max(Math.trunc(requestedPage), 1), totalPages) : 1;
   const start = (currentPage - 1) * PAGE_SIZE;
   const visibleRows = filteredRows.slice(start, start + PAGE_SIZE);
+  const currentUrl = queryHref(params, currentPage);
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-6">
@@ -183,9 +157,7 @@ export default async function AccountsPage({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Transaction history</h2>
-              <p className="mt-0.5 text-xs text-slate-500">
-                {filteredRows.length === 0 ? "No transactions" : `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, filteredRows.length)} of ${filteredRows.length}`}. {uncategorised} uncategorised.
-              </p>
+              <p className="mt-0.5 text-xs text-slate-500">{filteredRows.length === 0 ? "No transactions" : `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, filteredRows.length)} of ${filteredRows.length}`}. {uncategorised} uncategorised.</p>
             </div>
             <div className="flex gap-4 text-xs">
               <span className="font-semibold text-emerald-700">Credits {money(filteredCredit)}</span>
@@ -200,17 +172,8 @@ export default async function AccountsPage({
             <>
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed divide-y divide-slate-200 text-[11px] leading-tight">
-                  <colgroup>
-                    <col className="w-[7%]" /><col className="w-[9%]" /><col className="w-[12%]" /><col className="w-[25%]" />
-                    <col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[9%]" /><col className="w-[22%]" />
-                  </colgroup>
-                  <thead className="bg-slate-50">
-                    <tr>
-                      {['Date','Account','Category','Description','Credit','Debit','Balance','Amend category'].map((heading) => (
-                        <th key={heading} className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-slate-500">{heading}</th>
-                      ))}
-                    </tr>
-                  </thead>
+                  <colgroup><col className="w-[7%]" /><col className="w-[9%]" /><col className="w-[12%]" /><col className="w-[25%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[9%]" /><col className="w-[22%]" /></colgroup>
+                  <thead className="bg-slate-50"><tr>{["Date","Account","Category","Description","Credit","Debit","Balance","Amend category"].map((heading) => <th key={heading} className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-slate-500">{heading}</th>)}</tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {visibleRows.map((row) => (
                       <tr key={row.id} className={row.category === "Uncategorised" ? "bg-amber-50" : ""}>
@@ -224,6 +187,7 @@ export default async function AccountsPage({
                         <td className="px-2 py-1">
                           <form action={updateTransactionCategory} className="flex items-center gap-1">
                             <input type="hidden" name="id" value={row.id} />
+                            <input type="hidden" name="returnTo" value={currentUrl} />
                             <select name="category" defaultValue={row.category} className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-1 py-1 text-[10px]">
                               {ACCOUNT_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
                             </select>
@@ -240,12 +204,8 @@ export default async function AccountsPage({
                 <div className="flex items-center justify-between gap-3 border-t border-slate-200 p-3 text-xs">
                   <span className="text-slate-500">Page {currentPage} of {totalPages}</span>
                   <div className="flex gap-2">
-                    {currentPage > 1 && (
-                      <a href={pageHref(params, currentPage - 1)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700">Previous</a>
-                    )}
-                    {currentPage < totalPages && (
-                      <a href={pageHref(params, currentPage + 1)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700">Next</a>
-                    )}
+                    {currentPage > 1 && <a href={queryHref(params, currentPage - 1)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700">Previous</a>}
+                    {currentPage < totalPages && <a href={queryHref(params, currentPage + 1)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700">Next</a>}
                   </div>
                 </div>
               )}
