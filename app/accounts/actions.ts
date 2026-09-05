@@ -105,7 +105,16 @@ function makeSourceKey(
   return createHash("sha256").update(`${base}|${occurrence}`).digest("hex");
 }
 
-function inferCategory(description: string) {
+function isBankCharge(description: string) {
+  const value = description.toLowerCase();
+  return value.includes("charge") || value.includes("bank fee");
+}
+
+function inferCategory(description: string, accountCode: "CLUB" | "MENS") {
+  if (accountCode === "CLUB") {
+    return isBankCharge(description) ? "Charges" : "Competition Fees";
+  }
+
   const value = description.toLowerCase();
   if (value.includes("curry")) return "Curry Cup Fees";
   return "Uncategorised";
@@ -133,7 +142,14 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
           const base = `${accountCode}|${transactionDate.toISOString().slice(0, 10)}|${description}|${credit.toFixed(2)}|${debit.toFixed(2)}`;
           const occurrence = (occurrences.get(base) ?? 0) + 1;
           occurrences.set(base, occurrence);
-          rows.push({ transactionDate, description, credit, debit, category: inferCategory(description), sourceKey: makeSourceKey(accountCode, transactionDate, description, credit, debit, occurrence) });
+          rows.push({
+            transactionDate,
+            description,
+            credit,
+            debit,
+            category: inferCategory(description, accountCode),
+            sourceKey: makeSourceKey(accountCode, transactionDate, description, credit, debit, occurrence),
+          });
         }
       }
       continue;
@@ -156,7 +172,14 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
     const occurrence = (occurrences.get(base) ?? 0) + 1;
     occurrences.set(base, occurrence);
 
-    rows.push({ transactionDate, description, credit, debit, category: inferCategory(description), sourceKey: makeSourceKey(accountCode, transactionDate, description, credit, debit, occurrence) });
+    rows.push({
+      transactionDate,
+      description,
+      credit,
+      debit,
+      category: inferCategory(description, accountCode),
+      sourceKey: makeSourceKey(accountCode, transactionDate, description, credit, debit, occurrence),
+    });
   }
 
   return rows;
@@ -203,13 +226,22 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
     if (credit === 0 && debit === 0) continue;
 
     const suppliedCategory = categoryIndex >= 0 ? values[categoryIndex]?.trim() : "";
-    const category = suppliedCategory && ACCOUNT_CATEGORIES.includes(suppliedCategory as (typeof ACCOUNT_CATEGORIES)[number]) ? suppliedCategory : inferCategory(description);
+    const category = suppliedCategory && ACCOUNT_CATEGORIES.includes(suppliedCategory as (typeof ACCOUNT_CATEGORIES)[number])
+      ? suppliedCategory
+      : inferCategory(description, accountCode);
     const reference = referenceIndex >= 0 ? values[referenceIndex]?.trim() : "";
     const base = reference ? `${accountCode}|${reference}` : `${accountCode}|${transactionDate.toISOString().slice(0, 10)}|${description}|${credit.toFixed(2)}|${debit.toFixed(2)}`;
     const occurrence = (occurrences.get(base) ?? 0) + 1;
     occurrences.set(base, occurrence);
 
-    parsedRows.push({ transactionDate, description, credit, debit, category, sourceKey: createHash("sha256").update(`${base}|${occurrence}`).digest("hex") });
+    parsedRows.push({
+      transactionDate,
+      description,
+      credit,
+      debit,
+      category,
+      sourceKey: createHash("sha256").update(`${base}|${occurrence}`).digest("hex"),
+    });
   }
 
   return parsedRows;
@@ -217,7 +249,30 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
 
 async function applySmartCategoriesToExisting() {
   await prisma.accountTransaction.updateMany({
-    where: { category: "Uncategorised", description: { contains: "curry", mode: "insensitive" } },
+    where: {
+      accountCode: "CLUB",
+      OR: [
+        { description: { contains: "charge", mode: "insensitive" } },
+        { description: { contains: "bank fee", mode: "insensitive" } },
+      ],
+    },
+    data: { category: "Charges" },
+  });
+
+  await prisma.accountTransaction.updateMany({
+    where: {
+      accountCode: "CLUB",
+      category: { not: "Charges" },
+    },
+    data: { category: "Competition Fees" },
+  });
+
+  await prisma.accountTransaction.updateMany({
+    where: {
+      accountCode: "MENS",
+      category: "Uncategorised",
+      description: { contains: "curry", mode: "insensitive" },
+    },
     data: { category: "Curry Cup Fees" },
   });
 }
@@ -231,7 +286,10 @@ async function saveImportedRows({ accountCode, fileName, rows, userId }: {
   if (rows.length === 0) return { error: "No transaction rows were recognised in the pasted text." };
   await applySmartCategoriesToExisting();
 
-  const existing = await prisma.accountTransaction.findMany({ where: { sourceKey: { in: rows.map((row) => row.sourceKey) } }, select: { sourceKey: true } });
+  const existing = await prisma.accountTransaction.findMany({
+    where: { sourceKey: { in: rows.map((row) => row.sourceKey) } },
+    select: { sourceKey: true },
+  });
   const existingKeys = new Set(existing.map((row) => row.sourceKey));
   const newRows = rows.filter((row) => !existingKeys.has(row.sourceKey));
 
@@ -242,15 +300,21 @@ async function saveImportedRows({ accountCode, fileName, rows, userId }: {
   }
 
   await prisma.$transaction(async (tx) => {
-    const batch = await tx.accountImportBatch.create({ data: { accountCode, fileName, rowCount: newRows.length, importedById: userId } });
-    await tx.accountTransaction.createMany({ data: newRows.map((row) => ({ ...row, accountCode, importBatchId: batch.id })) });
+    const batch = await tx.accountImportBatch.create({
+      data: { accountCode, fileName, rowCount: newRows.length, importedById: userId },
+    });
+    await tx.accountTransaction.createMany({
+      data: newRows.map((row) => ({ ...row, accountCode, importBatchId: batch.id })),
+    });
   });
 
   revalidatePath("/accounts");
   revalidatePath("/accounts/import");
   revalidatePath("/accounts/summary");
 
-  return { success: `${newRows.length} new transaction${newRows.length === 1 ? "" : "s"} imported. ${rows.length - newRows.length} duplicate${rows.length - newRows.length === 1 ? "" : "s"} skipped. Smart categories applied automatically where recognised.` };
+  return {
+    success: `${newRows.length} new transaction${newRows.length === 1 ? "" : "s"} imported. ${rows.length - newRows.length} duplicate${rows.length - newRows.length === 1 ? "" : "s"} skipped. Smart categories applied automatically where recognised.`,
+  };
 }
 
 export type ImportState = { error?: string; success?: string };
@@ -280,7 +344,12 @@ export async function importPastedTransactions(_previousState: ImportState, form
   if (!pastedData) return { error: "Paste the bank transactions into the box first." };
 
   try {
-    return await saveImportedRows({ accountCode, fileName: `Pasted Lloyds transactions ${new Date().toISOString().slice(0, 10)}`, rows: buildParsedRows(pastedData, accountCode), userId: user.id });
+    return await saveImportedRows({
+      accountCode,
+      fileName: `Pasted Lloyds transactions ${new Date().toISOString().slice(0, 10)}`,
+      rows: buildParsedRows(pastedData, accountCode),
+      userId: user.id,
+    });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Unable to read the pasted transactions." };
   }
@@ -297,7 +366,11 @@ export async function updateTransactionCategory(formData: FormData) {
     throw new Error("Invalid category update.");
   }
 
-  const updated = await prisma.accountTransaction.update({ where: { id }, data: { category }, select: { category: true } });
+  const updated = await prisma.accountTransaction.update({
+    where: { id },
+    data: { category },
+    select: { category: true },
+  });
   if (updated.category !== category) throw new Error("The transaction category did not save correctly.");
 
   revalidatePath("/accounts", "page");
