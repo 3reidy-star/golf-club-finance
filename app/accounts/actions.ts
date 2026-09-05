@@ -74,12 +74,88 @@ function parseDate(value: string) {
     return new Date(Date.UTC(year, Number(uk[2]) - 1, Number(uk[1])));
   }
 
+  const lloyds = trimmed.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2,4})$/);
+  if (lloyds) {
+    const monthNames = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    const month = monthNames.indexOf(lloyds[2].toLowerCase());
+    if (month < 0) throw new Error(`Invalid date: ${value}`);
+    const year = lloyds[3].length === 2 ? 2000 + Number(lloyds[3]) : Number(lloyds[3]);
+    return new Date(Date.UTC(year, month, Number(lloyds[1])));
+  }
+
   const date = new Date(trimmed);
   if (Number.isNaN(date.getTime())) throw new Error(`Invalid date: ${value}`);
   return date;
 }
 
+type ParsedRow = {
+  transactionDate: Date;
+  description: string;
+  credit: number;
+  debit: number;
+  category: string;
+  sourceKey: string;
+};
+
+function makeSourceKey(
+  accountCode: "CLUB" | "MENS",
+  transactionDate: Date,
+  description: string,
+  credit: number,
+  debit: number,
+  occurrence: number,
+) {
+  const base = `${accountCode}|${transactionDate.toISOString().slice(0, 10)}|${description}|${credit.toFixed(2)}|${debit.toFixed(2)}`;
+  return createHash("sha256").update(`${base}|${occurrence}`).digest("hex");
+}
+
+function buildLloydsMarkdownRows(text: string, accountCode: "CLUB" | "MENS") {
+  const rows: ParsedRow[] = [];
+  const occurrences = new Map<string, number>();
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line.startsWith("|")) continue;
+
+    const cells = line
+      .split("|")
+      .slice(1, -1)
+      .map((cell) => cell.trim());
+
+    if (cells.length < 4) continue;
+    if (!/^\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4}$/.test(cells[0])) continue;
+
+    const transactionDate = parseDate(cells[0]);
+    const description = cells[1] || "No description";
+
+    // Lloyds' copied table is Date | Description | Type | In | Out | Balance.
+    // Some pasted versions omit trailing blank cells, so only the first two amount
+    // positions after Type are used.
+    const credit = parseMoney(cells[3]);
+    const debit = parseMoney(cells[4]);
+    if (credit === 0 && debit === 0) continue;
+
+    const base = `${accountCode}|${transactionDate.toISOString().slice(0, 10)}|${description}|${credit.toFixed(2)}|${debit.toFixed(2)}`;
+    const occurrence = (occurrences.get(base) ?? 0) + 1;
+    occurrences.set(base, occurrence);
+
+    rows.push({
+      transactionDate,
+      description,
+      credit,
+      debit,
+      category: "Uncategorised",
+      sourceKey: makeSourceKey(accountCode, transactionDate, description, credit, debit, occurrence),
+    });
+  }
+
+  return rows;
+}
+
 function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
+  const lloydsRows = buildLloydsMarkdownRows(text, accountCode);
+  if (lloydsRows.length > 0) return lloydsRows;
+
   const lines = text
     .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
@@ -94,39 +170,18 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
   const find = (...names: string[]) => headers.findIndex((h) => names.includes(h));
 
   const dateIndex = find("date", "transactiondate", "valuedate", "posteddate");
-  const descriptionIndex = find(
-    "description",
-    "details",
-    "transaction",
-    "narrative",
-    "memo",
-    "transactiondescription",
-  );
-  const creditIndex = find("credit", "moneyin", "paidin", "income");
-  const debitIndex = find("debit", "moneyout", "paidout", "expense");
+  const descriptionIndex = find("description", "details", "transaction", "narrative", "memo", "transactiondescription");
+  const creditIndex = find("credit", "moneyin", "paidin", "income", "in");
+  const debitIndex = find("debit", "moneyout", "paidout", "expense", "out");
   const amountIndex = find("amount", "transactionamount");
   const categoryIndex = find("category");
   const referenceIndex = find("reference", "transactionid", "id");
 
-  if (
-    dateIndex < 0 ||
-    descriptionIndex < 0 ||
-    (amountIndex < 0 && creditIndex < 0 && debitIndex < 0)
-  ) {
-    throw new Error(
-      "The pasted data needs a header row with Date and Description, plus either Amount or Credit/Debit columns.",
-    );
+  if (dateIndex < 0 || descriptionIndex < 0 || (amountIndex < 0 && creditIndex < 0 && debitIndex < 0)) {
+    throw new Error("The pasted data needs Date and Description, plus either Amount or Credit/Debit columns.");
   }
 
-  const parsedRows: Array<{
-    transactionDate: Date;
-    description: string;
-    credit: number;
-    debit: number;
-    category: string;
-    sourceKey: string;
-  }> = [];
-
+  const parsedRows: ParsedRow[] = [];
   const occurrences = new Map<string, number>();
 
   for (const line of lines.slice(1)) {
@@ -146,13 +201,9 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
     if (credit === 0 && debit === 0) continue;
 
     const suppliedCategory = categoryIndex >= 0 ? values[categoryIndex]?.trim() : "";
-    const category =
-      suppliedCategory &&
-      ACCOUNT_CATEGORIES.includes(
-        suppliedCategory as (typeof ACCOUNT_CATEGORIES)[number],
-      )
-        ? suppliedCategory
-        : "Uncategorised";
+    const category = suppliedCategory && ACCOUNT_CATEGORIES.includes(suppliedCategory as (typeof ACCOUNT_CATEGORIES)[number])
+      ? suppliedCategory
+      : "Uncategorised";
 
     const reference = referenceIndex >= 0 ? values[referenceIndex]?.trim() : "";
     const base = reference
@@ -162,37 +213,20 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
     const occurrence = (occurrences.get(base) ?? 0) + 1;
     occurrences.set(base, occurrence);
 
-    const sourceKey = createHash("sha256")
-      .update(`${base}|${occurrence}`)
-      .digest("hex");
-
-    parsedRows.push({
-      transactionDate,
-      description,
-      credit,
-      debit,
-      category,
-      sourceKey,
-    });
+    const sourceKey = createHash("sha256").update(`${base}|${occurrence}`).digest("hex");
+    parsedRows.push({ transactionDate, description, credit, debit, category, sourceKey });
   }
 
   return parsedRows;
 }
 
-async function saveImportedRows({
-  accountCode,
-  fileName,
-  rows,
-  userId,
-}: {
+async function saveImportedRows({ accountCode, fileName, rows, userId }: {
   accountCode: "CLUB" | "MENS";
   fileName: string;
   rows: ReturnType<typeof buildParsedRows>;
   userId: string;
 }) {
-  if (rows.length === 0) {
-    return { success: "No non-zero transactions were found." };
-  }
+  if (rows.length === 0) return { success: "No non-zero transactions were found." };
 
   const existing = await prisma.accountTransaction.findMany({
     where: { sourceKey: { in: rows.map((row) => row.sourceKey) } },
@@ -208,20 +242,11 @@ async function saveImportedRows({
 
   await prisma.$transaction(async (tx) => {
     const batch = await tx.accountImportBatch.create({
-      data: {
-        accountCode,
-        fileName,
-        rowCount: newRows.length,
-        importedById: userId,
-      },
+      data: { accountCode, fileName, rowCount: newRows.length, importedById: userId },
     });
 
     await tx.accountTransaction.createMany({
-      data: newRows.map((row) => ({
-        ...row,
-        accountCode,
-        importBatchId: batch.id,
-      })),
+      data: newRows.map((row) => ({ ...row, accountCode, importBatchId: batch.id })),
     });
   });
 
@@ -234,74 +259,43 @@ async function saveImportedRows({
   };
 }
 
-export type ImportState = {
-  error?: string;
-  success?: string;
-};
+export type ImportState = { error?: string; success?: string };
 
-export async function importTransactions(
-  _previousState: ImportState,
-  formData: FormData,
-): Promise<ImportState> {
+export async function importTransactions(_previousState: ImportState, formData: FormData): Promise<ImportState> {
   const user = await requireTreasurer();
   const accountCode = String(formData.get("accountCode") ?? "");
-
-  if (accountCode !== "CLUB" && accountCode !== "MENS") {
-    return { error: "Choose an account." };
-  }
+  if (accountCode !== "CLUB" && accountCode !== "MENS") return { error: "Choose an account." };
 
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { error: "Choose a CSV file to import." };
-  }
-
-  if (!file.name.toLowerCase().endsWith(".csv")) {
-    return { error: "Please export the transaction list as CSV before uploading." };
-  }
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a CSV file to import." };
+  if (!file.name.toLowerCase().endsWith(".csv")) return { error: "Please export the transaction list as CSV before uploading." };
 
   try {
     const rows = buildParsedRows(await file.text(), accountCode);
-    return await saveImportedRows({
-      accountCode,
-      fileName: file.name,
-      rows,
-      userId: user.id,
-    });
+    return await saveImportedRows({ accountCode, fileName: file.name, rows, userId: user.id });
   } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "Unable to read the CSV.",
-    };
+    return { error: error instanceof Error ? error.message : "Unable to read the CSV." };
   }
 }
 
-export async function importPastedTransactions(
-  _previousState: ImportState,
-  formData: FormData,
-): Promise<ImportState> {
+export async function importPastedTransactions(_previousState: ImportState, formData: FormData): Promise<ImportState> {
   const user = await requireTreasurer();
   const accountCode = String(formData.get("accountCode") ?? "");
-
-  if (accountCode !== "CLUB" && accountCode !== "MENS") {
-    return { error: "Choose an account." };
-  }
+  if (accountCode !== "CLUB" && accountCode !== "MENS") return { error: "Choose an account." };
 
   const pastedData = String(formData.get("pastedData") ?? "").trim();
-  if (!pastedData) {
-    return { error: "Paste the bank transactions into the box first." };
-  }
+  if (!pastedData) return { error: "Paste the bank transactions into the box first." };
 
   try {
     const rows = buildParsedRows(pastedData, accountCode);
     return await saveImportedRows({
       accountCode,
-      fileName: `Pasted bank transactions ${new Date().toISOString().slice(0, 10)}`,
+      fileName: `Pasted Lloyds transactions ${new Date().toISOString().slice(0, 10)}`,
       rows,
       userId: user.id,
     });
   } catch (error) {
-    return {
-      error: error instanceof Error ? error.message : "Unable to read the pasted transactions.",
-    };
+    return { error: error instanceof Error ? error.message : "Unable to read the pasted transactions." };
   }
 }
 
@@ -310,18 +304,11 @@ export async function updateTransactionCategory(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const category = String(formData.get("category") ?? "");
 
-  if (
-    !id ||
-    !ACCOUNT_CATEGORIES.includes(category as (typeof ACCOUNT_CATEGORIES)[number])
-  ) {
+  if (!id || !ACCOUNT_CATEGORIES.includes(category as (typeof ACCOUNT_CATEGORIES)[number])) {
     throw new Error("Invalid category update.");
   }
 
-  await prisma.accountTransaction.update({
-    where: { id },
-    data: { category },
-  });
-
+  await prisma.accountTransaction.update({ where: { id }, data: { category } });
   revalidatePath("/accounts");
   revalidatePath("/accounts/summary");
 }
