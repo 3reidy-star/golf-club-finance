@@ -6,6 +6,8 @@ import { ACCOUNT_CATEGORIES } from "./categories";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZE = 75;
+
 type SearchParams = Promise<{
   account?: string;
   category?: string;
@@ -13,6 +15,7 @@ type SearchParams = Promise<{
   to?: string;
   search?: string;
   type?: string;
+  page?: string;
 }>;
 
 function money(value: number) {
@@ -26,6 +29,15 @@ function parseFilterDate(value: string | undefined, endOfDay = false) {
   if (!value) return null;
   const date = new Date(`${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`);
   return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function pageHref(params: Record<string, string | undefined>, page: number) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value && key !== "page") query.set(key, value);
+  }
+  query.set("page", String(page));
+  return `/accounts?${query.toString()}`;
 }
 
 export default async function AccountsPage({
@@ -96,6 +108,14 @@ export default async function AccountsPage({
   const filteredCredit = filteredRows.reduce((total, row) => total + Number(row.credit), 0);
   const filteredDebit = filteredRows.reduce((total, row) => total + Number(row.debit), 0);
 
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const requestedPage = Number(params.page ?? "1");
+  const currentPage = Number.isFinite(requestedPage)
+    ? Math.min(Math.max(Math.trunc(requestedPage), 1), totalPages)
+    : 1;
+  const start = (currentPage - 1) * PAGE_SIZE;
+  const visibleRows = filteredRows.slice(start, start + PAGE_SIZE);
+
   return (
     <main className="min-h-screen bg-slate-100 p-4 md:p-6">
       <div className="mx-auto max-w-[1600px]">
@@ -163,7 +183,9 @@ export default async function AccountsPage({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 p-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-900">Transaction history</h2>
-              <p className="mt-0.5 text-xs text-slate-500">Showing {filteredRows.length} transaction{filteredRows.length === 1 ? "" : "s"}. {uncategorised} uncategorised.</p>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {filteredRows.length === 0 ? "No transactions" : `Showing ${start + 1}-${Math.min(start + PAGE_SIZE, filteredRows.length)} of ${filteredRows.length}`}. {uncategorised} uncategorised.
+              </p>
             </div>
             <div className="flex gap-4 text-xs">
               <span className="font-semibold text-emerald-700">Credits {money(filteredCredit)}</span>
@@ -175,43 +197,59 @@ export default async function AccountsPage({
           {filteredRows.length === 0 ? (
             <div className="p-6 text-center text-xs text-slate-500">No transactions match the selected filters.</div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full table-fixed divide-y divide-slate-200 text-[11px] leading-tight">
-                <colgroup>
-                  <col className="w-[7%]" /><col className="w-[9%]" /><col className="w-[12%]" /><col className="w-[25%]" />
-                  <col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[9%]" /><col className="w-[22%]" />
-                </colgroup>
-                <thead className="bg-slate-50">
-                  <tr>
-                    {['Date','Account','Category','Description','Credit','Debit','Balance','Amend category'].map((heading) => (
-                      <th key={heading} className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-slate-500">{heading}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredRows.map((row) => (
-                    <tr key={row.id} className={row.category === "Uncategorised" ? "bg-amber-50" : ""}>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-slate-700">{row.transactionDate.toLocaleDateString("en-GB")}</td>
-                      <td className="truncate px-2 py-1.5 text-slate-700" title={row.accountName}>{row.accountName}</td>
-                      <td className="truncate px-2 py-1.5 font-medium text-slate-700" title={row.category}>{row.category}</td>
-                      <td className="truncate px-2 py-1.5 text-slate-900" title={row.description}>{row.description}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-right text-emerald-700">{Number(row.credit) ? money(Number(row.credit)) : "-"}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-right text-red-700">{Number(row.debit) ? money(Number(row.debit)) : "-"}</td>
-                      <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-slate-900">{money(row.runningBalance)}</td>
-                      <td className="px-2 py-1">
-                        <form action={updateTransactionCategory} className="flex items-center gap-1">
-                          <input type="hidden" name="id" value={row.id} />
-                          <select name="category" defaultValue={row.category} className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-1 py-1 text-[10px]">
-                            {ACCOUNT_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
-                          </select>
-                          <button type="submit" className="rounded border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700">Save</button>
-                        </form>
-                      </td>
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full table-fixed divide-y divide-slate-200 text-[11px] leading-tight">
+                  <colgroup>
+                    <col className="w-[7%]" /><col className="w-[9%]" /><col className="w-[12%]" /><col className="w-[25%]" />
+                    <col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[9%]" /><col className="w-[22%]" />
+                  </colgroup>
+                  <thead className="bg-slate-50">
+                    <tr>
+                      {['Date','Account','Category','Description','Credit','Debit','Balance','Amend category'].map((heading) => (
+                        <th key={heading} className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-slate-500">{heading}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {visibleRows.map((row) => (
+                      <tr key={row.id} className={row.category === "Uncategorised" ? "bg-amber-50" : ""}>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-slate-700">{row.transactionDate.toLocaleDateString("en-GB")}</td>
+                        <td className="truncate px-2 py-1.5 text-slate-700" title={row.accountName}>{row.accountName}</td>
+                        <td className="truncate px-2 py-1.5 font-medium text-slate-700" title={row.category}>{row.category}</td>
+                        <td className="truncate px-2 py-1.5 text-slate-900" title={row.description}>{row.description}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-emerald-700">{Number(row.credit) ? money(Number(row.credit)) : "-"}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-right text-red-700">{Number(row.debit) ? money(Number(row.debit)) : "-"}</td>
+                        <td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-slate-900">{money(row.runningBalance)}</td>
+                        <td className="px-2 py-1">
+                          <form action={updateTransactionCategory} className="flex items-center gap-1">
+                            <input type="hidden" name="id" value={row.id} />
+                            <select name="category" defaultValue={row.category} className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-1 py-1 text-[10px]">
+                              {ACCOUNT_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+                            </select>
+                            <button type="submit" className="rounded border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700">Save</button>
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between gap-3 border-t border-slate-200 p-3 text-xs">
+                  <span className="text-slate-500">Page {currentPage} of {totalPages}</span>
+                  <div className="flex gap-2">
+                    {currentPage > 1 && (
+                      <a href={pageHref(params, currentPage - 1)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700">Previous</a>
+                    )}
+                    {currentPage < totalPages && (
+                      <a href={pageHref(params, currentPage + 1)} className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-semibold text-slate-700">Next</a>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>
