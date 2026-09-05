@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ACCOUNT_CATEGORIES, updateTransactionCategory } from "./actions";
+import { updateTransactionCategory } from "./actions";
+import { ACCOUNT_CATEGORIES } from "./categories";
 
 export const dynamic = "force-dynamic";
 
