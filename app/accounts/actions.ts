@@ -5,39 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-
-export const ACCOUNT_CATEGORIES = [
-  "Uncategorised",
-  "Ancillary",
-  "Awards Night",
-  "Captains Day",
-  "Captains Gift",
-  "Charges",
-  "Charity Comp Costs",
-  "Charity Comp Fee",
-  "Competition Fees",
-  "Competition Prizes",
-  "Curry Cup Cost",
-  "Curry Cup Fees",
-  "Jubilee Costs",
-  "Jubilee Fees",
-  "Junior Comp Fee",
-  "Junior Competition Cost",
-  "Junior Sponsorship",
-  "Kit",
-  "Leslie Wood Comp Fees",
-  "Leslie Wood Costs",
-  "Norman Plum Costs",
-  "Norman Plum Fees",
-  "Seniors Comp Costs",
-  "Seniors Comp Fees",
-  "Sponsorship",
-  "Team Essex Day",
-  "Thommo Charity",
-  "Thornton Cup Costs",
-  "Thornton Cup Fees",
-  "Winter League",
-] as const;
+import { ACCOUNT_CATEGORIES } from "./categories";
 
 async function requireTreasurer() {
   const session = await auth();
