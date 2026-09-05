@@ -104,6 +104,16 @@ function makeSourceKey(
   return createHash("sha256").update(`${base}|${occurrence}`).digest("hex");
 }
 
+function inferCategory(description: string) {
+  const value = description.toLowerCase();
+
+  if (value.includes("curry")) {
+    return "Curry Cup Fees";
+  }
+
+  return "Uncategorised";
+}
+
 function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
   const rows: ParsedRow[] = [];
   const occurrences = new Map<string, number>();
@@ -118,7 +128,6 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
     const line = rawLine.trim();
     if (!line) continue;
 
-    // Markdown/table copy: | 07 Sep 26 | Description | FPI | 50.00 | | |
     if (line.startsWith("|")) {
       const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
       if (cells.length >= 4 && /^\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4}$/.test(cells[0])) {
@@ -135,7 +144,7 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
             description,
             credit,
             debit,
-            category: "Uncategorised",
+            category: inferCategory(description),
             sourceKey: makeSourceKey(accountCode, transactionDate, description, credit, debit, occurrence),
           });
         }
@@ -143,7 +152,6 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
       continue;
     }
 
-    // Plain/tabbed copy: 07 Sep 26    DESCRIPTION    FPI    50.00
     const dateMatch = line.match(/^(\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})\s+(.+)$/);
     if (!dateMatch) continue;
 
@@ -158,9 +166,6 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
     const amounts = [...tail.matchAll(/(?:£\s*)?(-?\d{1,3}(?:,\d{3})*\.\d{2}|-?\d+\.\d{2})/g)].map((m) => parseMoney(m[1]));
     if (amounts.length === 0) continue;
 
-    // Lloyds copied transaction rows list In, then Out, then Balance. In most pasted
-    // text only the populated In/Out amount survives. Treat the first amount as the
-    // transaction amount; if a minus sign is present it is an outgoing transaction.
     const first = amounts[0];
     const credit = first >= 0 ? first : 0;
     const debit = first < 0 ? Math.abs(first) : 0;
@@ -174,7 +179,7 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
       description,
       credit,
       debit,
-      category: "Uncategorised",
+      category: inferCategory(description),
       sourceKey: makeSourceKey(accountCode, transactionDate, description, credit, debit, occurrence),
     });
   }
@@ -226,7 +231,7 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
     const suppliedCategory = categoryIndex >= 0 ? values[categoryIndex]?.trim() : "";
     const category = suppliedCategory && ACCOUNT_CATEGORIES.includes(suppliedCategory as (typeof ACCOUNT_CATEGORIES)[number])
       ? suppliedCategory
-      : "Uncategorised";
+      : inferCategory(description);
 
     const reference = referenceIndex >= 0 ? values[referenceIndex]?.trim() : "";
     const base = reference
@@ -248,6 +253,21 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
   return parsedRows;
 }
 
+async function applySmartCategoriesToExisting() {
+  await prisma.accountTransaction.updateMany({
+    where: {
+      category: "Uncategorised",
+      description: {
+        contains: "curry",
+        mode: "insensitive",
+      },
+    },
+    data: {
+      category: "Curry Cup Fees",
+    },
+  });
+}
+
 async function saveImportedRows({ accountCode, fileName, rows, userId }: {
   accountCode: "CLUB" | "MENS";
   fileName: string;
@@ -255,6 +275,8 @@ async function saveImportedRows({ accountCode, fileName, rows, userId }: {
   userId: string;
 }) {
   if (rows.length === 0) return { error: "No transaction rows were recognised in the pasted text." };
+
+  await applySmartCategoriesToExisting();
 
   const existing = await prisma.accountTransaction.findMany({
     where: { sourceKey: { in: rows.map((row) => row.sourceKey) } },
@@ -264,7 +286,11 @@ async function saveImportedRows({ accountCode, fileName, rows, userId }: {
   const existingKeys = new Set(existing.map((row) => row.sourceKey));
   const newRows = rows.filter((row) => !existingKeys.has(row.sourceKey));
 
-  if (newRows.length === 0) return { success: "No new transactions found — all rows were already imported." };
+  if (newRows.length === 0) {
+    revalidatePath("/accounts");
+    revalidatePath("/accounts/summary");
+    return { success: "No new transactions found — all rows were already imported. Smart categorisation was still applied to existing transactions." };
+  }
 
   await prisma.$transaction(async (tx) => {
     const batch = await tx.accountImportBatch.create({
@@ -280,7 +306,7 @@ async function saveImportedRows({ accountCode, fileName, rows, userId }: {
   revalidatePath("/accounts/summary");
 
   return {
-    success: `${newRows.length} new transaction${newRows.length === 1 ? "" : "s"} imported. ${rows.length - newRows.length} duplicate${rows.length - newRows.length === 1 ? "" : "s"} skipped.`,
+    success: `${newRows.length} new transaction${newRows.length === 1 ? "" : "s"} imported. ${rows.length - newRows.length} duplicate${rows.length - newRows.length === 1 ? "" : "s"} skipped. Smart categories applied automatically where recognised.`,
   };
 }
 
