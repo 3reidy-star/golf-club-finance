@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  TREASURER
+  TOPUP_ADMIN
+  SECTION_USER
+}
+
+enum SectionCode {
+  MENS
+  SENIORS
+  JUNIORS
+  LADIES
+  OTHER
+}
+
+enum PayoutStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PAID
+  CANCELLED
+}
+
+enum PayoutCalculationType {
+  PLAYERS_X_FEE
+  MANUAL_AMOUNT
+  COMPETITION
+}
+
+enum PayoutRecipientType {
+  SECTION_ACCOUNT
+  PLAYER
+}
+
+enum CompetitionType {
+  STANDARD
+  MAJOR
+}
+
+model User {
+  id           String   @id @default(cuid())
+  username     String?  @unique
+  email        String   @unique
+  passwordHash String?
+  name         String?
+  role         UserRole
+  active       Boolean  @default(true)
+
+  sectionMembers SectionMember[]
+
+  requested PayoutRequest[] @relation("PayoutRequestedBy")
+  approved  PayoutRequest[] @relation("PayoutApprovedBy")
+  paid      PayoutRequest[] @relation("PayoutPaidBy")
+
+  competitions Competition[] @relation("CompetitionCreatedBy")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Section {
+  id                String      @id @default(cuid())
+  code              SectionCode @unique
+  name              String
+  active            Boolean     @default(true)
+  defaultPaymentFee Decimal     @default(0.04) @db.Decimal(6, 5)
+  accountReference  String?
+
+  members          SectionMember[]
+  payoutRequests   PayoutRequest[]
+  competitionRules CompetitionRule[]
+  competitions     Competition[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SectionMember {
+  id        String @id @default(cuid())
+  userId    String
+  sectionId String
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sectionId])
+}
+
+model PayoutRequest {
+  id              String                @id @default(cuid())
+  reference       String                @unique
+  sectionId       String
+  status          PayoutStatus          @default(REQUESTED)
+  calculationType PayoutCalculationType
+  reason          String
+
+  section Section @relation(fields: [sectionId], references: [id])
+
+  competitionId String?      @unique
+  competition   Competition? @relation(fields: [competitionId], references: [id])
+
+  players          Int?
+  amountPerPlayer  Decimal? @db.Decimal(10, 2)
+  grossAmount      Decimal  @db.Decimal(10, 2)
+  paymentFeeRate   Decimal  @default(0.04) @db.Decimal(6, 5)
+  paymentFeeAmount Decimal  @db.Decimal(10, 2)
+  additionalFees   Decimal  @default(0) @db.Decimal(10, 2)
+  netTopUpAmount   Decimal  @db.Decimal(10, 2)
+
+  requestedById String
+  requestedBy   User   @relation("PayoutRequestedBy", fields: [requestedById], references: [id])
+
+  requestedAt DateTime @default(now())
+
+  approvedById  String?
+  approvedBy    User?     @relation("PayoutApprovedBy", fields: [approvedById], references: [id])
+  approvedAt    DateTime?
+  approvalNotes String?
+
+  paidById String?
+  paidBy   User?   @relation("PayoutPaidBy", fields: [paidById], references: [id])
+
+  paidAt           DateTime?
+  paymentReference String?
+
+  rejectedAt      DateTime?
+  rejectedReason  String?
+  cancelledAt     DateTime?
+  cancelledReason String?
+
+  topUps PayoutTopUp[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sectionId, status])
+  @@index([status, requestedAt])
+}
+
+model PayoutTopUp {
+  id              String @id @default(cuid())
+  payoutRequestId String
+
+  payoutRequest PayoutRequest @relation(fields: [payoutRequestId], references: [id], onDelete: Cascade)
+
+  recipientType    PayoutRecipientType
+  recipientName    String
+  accountReference String?
+  amount           Decimal             @db.Decimal(10, 2)
+
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([payoutRequestId])
+  @@index([completed])
+}
+
+model CompetitionRule {
+  id        String @id @default(cuid())
+  sectionId String
+
+  section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
+  name   String
+  active Boolean @default(true)
+
+  entryFee             Decimal  @db.Decimal(10, 2)
+  prizeFundPercentage  Decimal  @db.Decimal(6, 5)
+  sectionPercentage    Decimal  @db.Decimal(6, 5)
+  paymentFeeRate       Decimal  @default(0.04) @db.Decimal(6, 5)
+  twosEntryFee         Decimal? @db.Decimal(10, 2)
+  deductTwosPaymentFee Boolean  @default(true)
+  grossPrize           Decimal? @db.Decimal(10, 2)
+  major                Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Competition {
+  id        String @id @default(cuid())
+  sectionId String
+
+  section Section @relation(fields: [sectionId], references: [id])
+
+  name            String
+  competitionDate DateTime
+  competitionType CompetitionType @default(STANDARD)
+
+  entrants Int
+
+  entryFee            Decimal @db.Decimal(10, 2)
+  prizeFundPercentage Decimal @db.Decimal(6, 5)
+  sectionPercentage   Decimal @db.Decimal(6, 5)
+  paymentFeeRate      Decimal @default(0.04) @db.Decimal(6, 5)
+
+  grossPrize Decimal? @db.Decimal(10, 2)
+
+  twosEntrants Int     @default(0)
+  twosEntryFee Decimal @default(1) @db.Decimal(10, 2)
+  twosWinners  Int     @default(0)
+
+  overrideReason String?
+
+  createdById String
+  createdBy   User   @relation("CompetitionCreatedBy", fields: [createdById], references: [id])
+
+  payoutRequest PayoutRequest?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sectionId, competitionDate])
+}
