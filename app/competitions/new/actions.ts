@@ -30,15 +30,17 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
   if (entryFee <= 0) throw new Error("Entry fee must be greater than zero.");
 
   const smallCompetition = entrants < 10;
-  const twosEntrantsOverride = smallCompetition
-    ? Number(input.twosEntrantsOverride ?? 0)
-    : null;
+  const manualTwosEntrants = Number(input.twosEntrantsOverride ?? 0);
 
-  if (smallCompetition && twosEntrantsOverride < 0) {
+  if (smallCompetition && manualTwosEntrants < 0) {
     throw new Error("Birdie 2s entrants cannot be negative.");
   }
 
-  if (smallCompetition && input.twosWinnersPresent === null) {
+  if (
+    smallCompetition &&
+    input.twosWinnersPresent !== true &&
+    input.twosWinnersPresent !== false
+  ) {
     throw new Error("Please confirm whether there were any Birdie 2s winners.");
   }
 
@@ -46,7 +48,7 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
     rawText: input.intelligentGolfText,
     entrants,
     entryFee,
-    twosEntrantsOverride,
+    twosEntrantsOverride: smallCompetition ? manualTwosEntrants : null,
     twosWinnersPresent: smallCompetition ? input.twosWinnersPresent ?? null : null,
   });
 
@@ -61,10 +63,10 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
   if (!user) throw new Error("Treasurer user not found.");
 
   const reference = `COMP-${Date.now()}`;
-  const twosEntrants = smallCompetition
-    ? twosEntrantsOverride
+  const twosEntrants: number = smallCompetition
+    ? manualTwosEntrants
     : preview.importData.twosPaidPlayers.length;
-  const twosWinners = smallCompetition && input.twosWinnersPresent === false
+  const twosWinners: number = smallCompetition && input.twosWinnersPresent === false
     ? 0
     : preview.importData.twosWinners.length;
 
@@ -99,12 +101,14 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
     }));
 
     const sectionTopUps = preview.sectionPayment > 0
-      ? [{
-          recipientType: "SECTION_ACCOUNT" as const,
-          recipientName: "Men's Section",
-          accountReference: name,
-          amount: preview.sectionPayment,
-        }]
+      ? [
+          {
+            recipientType: "SECTION_ACCOUNT" as const,
+            recipientName: "Men's Section",
+            accountReference: name,
+            amount: preview.sectionPayment,
+          },
+        ]
       : [];
 
     const payout = await tx.payoutRequest.create({
