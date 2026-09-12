@@ -8,193 +8,275 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole { ADMIN TREASURER TOPUP_ADMIN SECTION_USER }
-enum SectionCode { MENS SENIORS JUNIORS LADIES OTHER }
-enum PayoutStatus { REQUESTED APPROVED REJECTED PAID CANCELLED }
-enum PayoutCalculationType { PLAYERS_X_FEE MANUAL_AMOUNT COMPETITION }
-enum PayoutRecipientType { SECTION_ACCOUNT PLAYER }
-enum CompetitionType { STANDARD MAJOR }
-enum AccountCode { CLUB MENS }
+enum UserRole {
+  ADMIN
+  TREASURER
+  TOPUP_ADMIN
+  SECTION_USER
+}
+
+enum SectionCode {
+  MENS
+  SENIORS
+  JUNIORS
+  LADIES
+  OTHER
+}
+
+enum PayoutStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  PAID
+  CANCELLED
+}
+
+enum PayoutCalculationType {
+  PLAYERS_X_FEE
+  MANUAL_AMOUNT
+  COMPETITION
+}
+
+enum PayoutRecipientType {
+  SECTION_ACCOUNT
+  PLAYER
+}
+
+enum CompetitionType {
+  STANDARD
+  MAJOR
+}
+
+enum AccountCode {
+  CLUB
+  MENS
+}
 
 model User {
-  id String @id @default(cuid())
-  username String? @unique
-  email String @unique
+  id           String   @id @default(cuid())
+  username     String?  @unique
+  email        String   @unique
   passwordHash String?
-  name String?
-  role UserRole
-  active Boolean @default(true)
+  name         String?
+  role         UserRole
+  active       Boolean  @default(true)
+
   sectionMembers SectionMember[]
+
   requested PayoutRequest[] @relation("PayoutRequestedBy")
-  approved PayoutRequest[] @relation("PayoutApprovedBy")
-  paid PayoutRequest[] @relation("PayoutPaidBy")
+  approved  PayoutRequest[] @relation("PayoutApprovedBy")
+  paid      PayoutRequest[] @relation("PayoutPaidBy")
+
   competitions Competition[] @relation("CompetitionCreatedBy")
   accountImports AccountImportBatch[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Section {
-  id String @id @default(cuid())
-  code SectionCode @unique
-  name String
-  active Boolean @default(true)
-  defaultPaymentFee Decimal @default(0.04) @db.Decimal(6, 5)
-  accountReference String?
-  members SectionMember[]
-  payoutRequests PayoutRequest[]
+  id                String      @id @default(cuid())
+  code              SectionCode @unique
+  name              String
+  active            Boolean     @default(true)
+  defaultPaymentFee Decimal     @default(0.04) @db.Decimal(6, 5)
+  accountReference  String?
+
+  members          SectionMember[]
+  payoutRequests   PayoutRequest[]
   competitionRules CompetitionRule[]
-  competitions Competition[]
+  competitions     Competition[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model SectionMember {
-  id String @id @default(cuid())
-  userId String
+  id        String @id @default(cuid())
+  userId    String
   sectionId String
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+
   @@unique([userId, sectionId])
 }
 
 model PayoutRequest {
-  id String @id @default(cuid())
-  reference String @unique
-  sectionId String
-  status PayoutStatus @default(REQUESTED)
+  id              String                @id @default(cuid())
+  reference       String                @unique
+  sectionId       String
+  status          PayoutStatus          @default(REQUESTED)
   calculationType PayoutCalculationType
-  reason String
+  reason          String
+
   section Section @relation(fields: [sectionId], references: [id])
-  competitionId String? @unique
-  competition Competition? @relation(fields: [competitionId], references: [id])
-  players Int?
-  amountPerPlayer Decimal? @db.Decimal(10, 2)
-  grossAmount Decimal @db.Decimal(10, 2)
-  paymentFeeRate Decimal @default(0.04) @db.Decimal(6, 5)
-  paymentFeeAmount Decimal @db.Decimal(10, 2)
-  additionalFees Decimal @default(0) @db.Decimal(10, 2)
-  netTopUpAmount Decimal @db.Decimal(10, 2)
+
+  competitionId String?      @unique
+  competition   Competition? @relation(fields: [competitionId], references: [id])
+
+  players          Int?
+  amountPerPlayer  Decimal? @db.Decimal(10, 2)
+  grossAmount      Decimal  @db.Decimal(10, 2)
+  paymentFeeRate   Decimal  @default(0.04) @db.Decimal(6, 5)
+  paymentFeeAmount Decimal  @db.Decimal(10, 2)
+  additionalFees   Decimal  @default(0) @db.Decimal(10, 2)
+  netTopUpAmount   Decimal  @db.Decimal(10, 2)
+
   requestedById String
-  requestedBy User @relation("PayoutRequestedBy", fields: [requestedById], references: [id])
+  requestedBy   User   @relation("PayoutRequestedBy", fields: [requestedById], references: [id])
+
   requestedAt DateTime @default(now())
-  approvedById String?
-  approvedBy User? @relation("PayoutApprovedBy", fields: [approvedById], references: [id])
-  approvedAt DateTime?
+
+  approvedById  String?
+  approvedBy    User?     @relation("PayoutApprovedBy", fields: [approvedById], references: [id])
+  approvedAt    DateTime?
   approvalNotes String?
+
   paidById String?
-  paidBy User? @relation("PayoutPaidBy", fields: [paidById], references: [id])
-  paidAt DateTime?
+  paidBy   User?   @relation("PayoutPaidBy", fields: [paidById], references: [id])
+
+  paidAt           DateTime?
   paymentReference String?
-  rejectedAt DateTime?
-  rejectedReason String?
-  cancelledAt DateTime?
+
+  rejectedAt      DateTime?
+  rejectedReason  String?
+  cancelledAt     DateTime?
   cancelledReason String?
+
   topUps PayoutTopUp[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@index([sectionId, status])
   @@index([status, requestedAt])
 }
 
 model PayoutTopUp {
-  id String @id @default(cuid())
+  id              String @id @default(cuid())
   payoutRequestId String
+
   payoutRequest PayoutRequest @relation(fields: [payoutRequestId], references: [id], onDelete: Cascade)
-  recipientType PayoutRecipientType
-  recipientName String
+
+  recipientType    PayoutRecipientType
+  recipientName    String
   accountReference String?
-  amount Decimal @db.Decimal(10, 2)
-  completed Boolean @default(false)
+  amount           Decimal             @db.Decimal(10, 2)
+
+  completed   Boolean   @default(false)
   completedAt DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@index([payoutRequestId])
   @@index([completed])
 }
 
 model CompetitionRule {
-  id String @id @default(cuid())
+  id        String @id @default(cuid())
   sectionId String
+
   section Section @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  name String
+
+  name   String
   active Boolean @default(true)
-  entryFee Decimal @db.Decimal(10, 2)
-  prizeFundPercentage Decimal @db.Decimal(6, 5)
-  sectionPercentage Decimal @db.Decimal(6, 5)
-  paymentFeeRate Decimal @default(0.04) @db.Decimal(6, 5)
-  twosEntryFee Decimal? @db.Decimal(10, 2)
-  deductTwosPaymentFee Boolean @default(true)
-  grossPrize Decimal? @db.Decimal(10, 2)
-  major Boolean @default(false)
+
+  entryFee             Decimal  @db.Decimal(10, 2)
+  prizeFundPercentage  Decimal  @db.Decimal(6, 5)
+  sectionPercentage    Decimal  @db.Decimal(6, 5)
+  paymentFeeRate       Decimal  @default(0.04) @db.Decimal(6, 5)
+  twosEntryFee         Decimal? @db.Decimal(10, 2)
+  deductTwosPaymentFee Boolean  @default(true)
+  grossPrize           Decimal? @db.Decimal(10, 2)
+  major                Boolean  @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Competition {
-  id String @id @default(cuid())
+  id        String @id @default(cuid())
   sectionId String
+
   section Section @relation(fields: [sectionId], references: [id])
-  name String
+
+  name            String
   competitionDate DateTime
   competitionType CompetitionType @default(STANDARD)
+
   entrants Int
-  entryFee Decimal @db.Decimal(10, 2)
+
+  entryFee            Decimal @db.Decimal(10, 2)
   prizeFundPercentage Decimal @db.Decimal(6, 5)
-  sectionPercentage Decimal @db.Decimal(6, 5)
-  paymentFeeRate Decimal @default(0.04) @db.Decimal(6, 5)
+  sectionPercentage   Decimal @db.Decimal(6, 5)
+  paymentFeeRate      Decimal @default(0.04) @db.Decimal(6, 5)
+
   grossPrize Decimal? @db.Decimal(10, 2)
-  twosEntrants Int @default(0)
+
+  twosEntrants Int     @default(0)
   twosEntryFee Decimal @default(1) @db.Decimal(10, 2)
-  twosWinners Int @default(0)
+  twosWinners  Int     @default(0)
+
   overrideReason String?
+
   createdById String
-  createdBy User @relation("CompetitionCreatedBy", fields: [createdById], references: [id])
+  createdBy   User   @relation("CompetitionCreatedBy", fields: [createdById], references: [id])
+
   payoutRequest PayoutRequest?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@index([sectionId, competitionDate])
 }
 
 model FinanceAccount {
-  code AccountCode @id
-  name String
-  openingDate DateTime
-  openingBalance Decimal @db.Decimal(12, 2)
+  code           AccountCode @id
+  name           String
+  openingDate    DateTime
+  openingBalance Decimal     @db.Decimal(12, 2)
+
   transactions AccountTransaction[]
-  imports AccountImportBatch[]
+  imports      AccountImportBatch[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model AccountImportBatch {
-  id String @id @default(cuid())
-  accountCode AccountCode
-  account FinanceAccount @relation(fields: [accountCode], references: [code])
-  fileName String
-  rowCount Int
+  id           String      @id @default(cuid())
+  accountCode  AccountCode
+  account      FinanceAccount @relation(fields: [accountCode], references: [code])
+  fileName     String
+  rowCount     Int
   importedById String
-  importedBy User @relation(fields: [importedById], references: [id])
-  importedAt DateTime @default(now())
+  importedBy   User        @relation(fields: [importedById], references: [id])
+  importedAt   DateTime    @default(now())
+
   transactions AccountTransaction[]
+
   @@index([accountCode, importedAt])
 }
 
 model AccountTransaction {
-  id String @id @default(cuid())
-  accountCode AccountCode
-  account FinanceAccount @relation(fields: [accountCode], references: [code])
+  id              String      @id @default(cuid())
+  accountCode     AccountCode
+  account         FinanceAccount @relation(fields: [accountCode], references: [code])
   transactionDate DateTime
-  description String
-  credit Decimal @default(0) @db.Decimal(12, 2)
-  debit Decimal @default(0) @db.Decimal(12, 2)
-  category String
-  reconciled Boolean @default(false)
-  sourceKey String @unique
-  importBatchId String?
-  importBatch AccountImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  description     String
+  credit          Decimal     @default(0) @db.Decimal(12, 2)
+  debit           Decimal     @default(0) @db.Decimal(12, 2)
+  category         String
+  reconciled       Boolean     @default(false)
+  sourceKey        String      @unique
+  importBatchId    String?
+  importBatch      AccountImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
   @@index([accountCode, transactionDate])
   @@index([accountCode, category])
   @@index([accountCode, reconciled])
