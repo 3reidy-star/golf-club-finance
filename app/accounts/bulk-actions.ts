@@ -7,17 +7,23 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { ACCOUNT_CATEGORIES } from "./categories";
 
-export async function saveTransactionCategories(formData: FormData) {
+async function requireTreasurer() {
   const session = await auth();
   if (!session?.user?.id || session.user.role !== "TREASURER") {
     throw new Error("Treasurer access only.");
   }
+}
 
+function safeReturnTo(formData: FormData) {
   const returnToRaw = String(formData.get("returnTo") ?? "/accounts");
-  const returnTo =
-    returnToRaw.startsWith("/accounts") && !returnToRaw.startsWith("//")
-      ? returnToRaw
-      : "/accounts";
+  return returnToRaw.startsWith("/accounts") && !returnToRaw.startsWith("//")
+    ? returnToRaw
+    : "/accounts";
+}
+
+export async function saveTransactionCategories(formData: FormData) {
+  await requireTreasurer();
+  const returnTo = safeReturnTo(formData);
 
   const updates: Array<{ id: string; category: string }> = [];
 
@@ -37,18 +43,54 @@ export async function saveTransactionCategories(formData: FormData) {
     }
   }
 
-  if (updates.length === 0) {
-    redirect(returnTo);
+  if (updates.length > 0) {
+    await prisma.$transaction(
+      updates.map((update) =>
+        prisma.accountTransaction.update({
+          where: { id: update.id },
+          data: { category: update.category },
+        }),
+      ),
+    );
   }
 
-  await prisma.$transaction(
-    updates.map((update) =>
-      prisma.accountTransaction.update({
-        where: { id: update.id },
-        data: { category: update.category },
-      }),
-    ),
-  );
+  revalidatePath("/accounts", "page");
+  revalidatePath("/accounts/summary", "page");
+  redirect(returnTo);
+}
+
+export async function swapTransactionDirection(formData: FormData) {
+  await requireTreasurer();
+  const returnTo = safeReturnTo(formData);
+  const transactionId = String(formData.get("transactionId") ?? "");
+
+  if (!transactionId) {
+    throw new Error("Transaction not found.");
+  }
+
+  const transaction = await prisma.accountTransaction.findUnique({
+    where: { id: transactionId },
+    select: { credit: true, debit: true },
+  });
+
+  if (!transaction) {
+    throw new Error("Transaction not found.");
+  }
+
+  const credit = Number(transaction.credit);
+  const debit = Number(transaction.debit);
+
+  if ((credit > 0 && debit > 0) || (credit === 0 && debit === 0)) {
+    throw new Error("This transaction cannot be swapped automatically.");
+  }
+
+  await prisma.accountTransaction.update({
+    where: { id: transactionId },
+    data: {
+      credit: debit,
+      debit: credit,
+    },
+  });
 
   revalidatePath("/accounts", "page");
   revalidatePath("/accounts/summary", "page");
