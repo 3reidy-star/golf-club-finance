@@ -3,6 +3,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { saveTransactionCategories } from "./bulk-actions";
 import { ACCOUNT_CATEGORIES } from "./categories";
+import ReconcileAccount from "./ReconcileAccount";
 
 export const dynamic = "force-dynamic";
 const PAGE_SIZE = 75;
@@ -104,13 +105,17 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          {accounts.map((account) => (
-            <section key={account.code} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-              <p className="text-xs font-semibold text-slate-500">{account.name}</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{money(accountBalanceByCode.get(account.code) ?? Number(account.openingBalance))}</p>
-              <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500"><span>{account.transactions.length} transactions</span><span>Opening {money(Number(account.openingBalance))}</span></div>
-            </section>
-          ))}
+          {accounts.map((account) => {
+            const ledgerBalance = accountBalanceByCode.get(account.code) ?? Number(account.openingBalance);
+            return (
+              <section key={account.code} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-semibold text-slate-500">{account.name}</p>
+                <p className="mt-1 text-2xl font-bold text-slate-900">{money(ledgerBalance)}</p>
+                <div className="mt-3 flex flex-wrap gap-4 text-xs text-slate-500"><span>{account.transactions.length} transactions</span><span>Opening {money(Number(account.openingBalance))}</span></div>
+                <ReconcileAccount accountName={account.name} ledgerBalance={ledgerBalance} />
+              </section>
+            );
+          })}
         </div>
 
         <section className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
