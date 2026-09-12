@@ -32,9 +32,7 @@ export async function saveTransactionCategories(formData: FormData) {
       select: { credit: true, debit: true },
     });
 
-    if (!transaction) {
-      throw new Error("Transaction not found.");
-    }
+    if (!transaction) throw new Error("Transaction not found.");
 
     const credit = Number(transaction.credit);
     const debit = Number(transaction.debit);
@@ -58,6 +56,12 @@ export async function saveTransactionCategories(formData: FormData) {
     redirect(returnTo);
   }
 
+  const deleteIds = formData
+    .getAll("deleteTransaction")
+    .map((value) => String(value))
+    .filter(Boolean);
+  const deleteIdSet = new Set(deleteIds);
+
   const updates: Array<{ id: string; category: string }> = [];
 
   for (const [key, value] of formData.entries()) {
@@ -68,6 +72,7 @@ export async function saveTransactionCategories(formData: FormData) {
 
     if (
       id &&
+      !deleteIdSet.has(id) &&
       ACCOUNT_CATEGORIES.includes(
         category as (typeof ACCOUNT_CATEGORIES)[number],
       )
@@ -76,18 +81,24 @@ export async function saveTransactionCategories(formData: FormData) {
     }
   }
 
-  if (updates.length > 0) {
-    await prisma.$transaction(
-      updates.map((update) =>
-        prisma.accountTransaction.update({
-          where: { id: update.id },
-          data: { category: update.category },
-        }),
-      ),
-    );
-  }
+  await prisma.$transaction([
+    ...updates.map((update) =>
+      prisma.accountTransaction.update({
+        where: { id: update.id },
+        data: { category: update.category },
+      }),
+    ),
+    ...(deleteIds.length > 0
+      ? [
+          prisma.accountTransaction.deleteMany({
+            where: { id: { in: deleteIds } },
+          }),
+        ]
+      : []),
+  ]);
 
   revalidatePath("/accounts", "page");
   revalidatePath("/accounts/summary", "page");
+  revalidatePath("/accounts/import", "page");
   redirect(returnTo);
 }
