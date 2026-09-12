@@ -24,6 +24,39 @@ function safeReturnTo(formData: FormData) {
 export async function saveTransactionCategories(formData: FormData) {
   await requireTreasurer();
   const returnTo = safeReturnTo(formData);
+  const swapTransactionId = String(formData.get("swapTransactionId") ?? "");
+
+  if (swapTransactionId) {
+    const transaction = await prisma.accountTransaction.findUnique({
+      where: { id: swapTransactionId },
+      select: { credit: true, debit: true },
+    });
+
+    if (!transaction) {
+      throw new Error("Transaction not found.");
+    }
+
+    const credit = Number(transaction.credit);
+    const debit = Number(transaction.debit);
+
+    if (credit > 0 && debit === 0) {
+      await prisma.accountTransaction.update({
+        where: { id: swapTransactionId },
+        data: { credit: 0, debit: credit },
+      });
+    } else if (debit > 0 && credit === 0) {
+      await prisma.accountTransaction.update({
+        where: { id: swapTransactionId },
+        data: { credit: debit, debit: 0 },
+      });
+    } else {
+      throw new Error("This transaction cannot be swapped automatically.");
+    }
+
+    revalidatePath("/accounts", "page");
+    revalidatePath("/accounts/summary", "page");
+    redirect(returnTo);
+  }
 
   const updates: Array<{ id: string; category: string }> = [];
 
@@ -53,44 +86,6 @@ export async function saveTransactionCategories(formData: FormData) {
       ),
     );
   }
-
-  revalidatePath("/accounts", "page");
-  revalidatePath("/accounts/summary", "page");
-  redirect(returnTo);
-}
-
-export async function swapTransactionDirection(formData: FormData) {
-  await requireTreasurer();
-  const returnTo = safeReturnTo(formData);
-  const transactionId = String(formData.get("transactionId") ?? "");
-
-  if (!transactionId) {
-    throw new Error("Transaction not found.");
-  }
-
-  const transaction = await prisma.accountTransaction.findUnique({
-    where: { id: transactionId },
-    select: { credit: true, debit: true },
-  });
-
-  if (!transaction) {
-    throw new Error("Transaction not found.");
-  }
-
-  const credit = Number(transaction.credit);
-  const debit = Number(transaction.debit);
-
-  if ((credit > 0 && debit > 0) || (credit === 0 && debit === 0)) {
-    throw new Error("This transaction cannot be swapped automatically.");
-  }
-
-  await prisma.accountTransaction.update({
-    where: { id: transactionId },
-    data: {
-      credit: debit,
-      debit: credit,
-    },
-  });
 
   revalidatePath("/accounts", "page");
   revalidatePath("/accounts/summary", "page");
