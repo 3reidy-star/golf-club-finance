@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { saveTransactionCategories, swapTransactionDirection } from "./bulk-actions";
+import { saveTransactionCategories } from "./bulk-actions";
 import { ACCOUNT_CATEGORIES } from "./categories";
 
 export const dynamic = "force-dynamic";
@@ -135,9 +135,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
                       <tr key={row.id} className={row.category === "Uncategorised" ? "bg-amber-50" : ""}>
                         <td className="whitespace-nowrap px-2 py-1.5 text-slate-700">{row.transactionDate.toLocaleDateString("en-GB")}</td><td className="truncate px-2 py-1.5 text-slate-700" title={row.accountName}>{row.accountName}</td><td className="truncate px-2 py-1.5 font-medium text-slate-700" title={row.category}>{row.category}</td><td className="truncate px-2 py-1.5 text-slate-900" title={row.description}>{row.description}</td><td className="whitespace-nowrap px-2 py-1.5 text-right text-emerald-700">{Number(row.credit) ? money(Number(row.credit)) : "-"}</td><td className="whitespace-nowrap px-2 py-1.5 text-right text-red-700">{Number(row.debit) ? money(Number(row.debit)) : "-"}</td><td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-slate-900">{money(row.runningBalance)}</td>
                         <td className="px-2 py-1"><select name={`category:${row.id}`} defaultValue={row.category} className="w-full rounded border border-slate-300 bg-white px-1 py-1 text-[10px]">{ACCOUNT_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
-                        <td className="px-2 py-1 text-center">
-                          <button formAction={swapTransactionDirection} name="transactionId" value={row.id} className="rounded border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50">Swap In / Out</button>
-                        </td>
+                        <td className="px-2 py-1 text-center"><button type="submit" name="swapTransactionId" value={row.id} className="rounded border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50">Swap In / Out</button></td>
                       </tr>
                     ))}
                   </tbody>
