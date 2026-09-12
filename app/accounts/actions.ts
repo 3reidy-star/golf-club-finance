@@ -120,6 +120,20 @@ function inferCategory(description: string, accountCode: "CLUB" | "MENS") {
   return "Uncategorised";
 }
 
+function lloydsDirection(type: string) {
+  const value = type.toUpperCase();
+
+  if (["FPO", "SO", "DD", "DEB", "CHQ", "BP", "ATM", "POS"].includes(value)) {
+    return "OUT" as const;
+  }
+
+  if (["FPI", "BGC", "CDM"].includes(value)) {
+    return "IN" as const;
+  }
+
+  return "UNKNOWN" as const;
+}
+
 function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
   const rows: ParsedRow[] = [];
   const occurrences = new Map<string, number>();
@@ -162,12 +176,15 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
     if (!typeMatch) continue;
 
     const description = typeMatch[1].trim() || "No description";
+    const transactionType = typeMatch[2].toUpperCase();
     const amounts = [...typeMatch[3].trim().matchAll(/(?:£\s*)?(-?\d{1,3}(?:,\d{3})*\.\d{2}|-?\d+\.\d{2})/g)].map((m) => parseMoney(m[1]));
     if (amounts.length === 0) continue;
 
-    const first = amounts[0];
-    const credit = first >= 0 ? first : 0;
-    const debit = first < 0 ? Math.abs(first) : 0;
+    const amount = Math.abs(amounts[0]);
+    const direction = lloydsDirection(transactionType);
+    const credit = direction === "OUT" ? 0 : amount;
+    const debit = direction === "OUT" ? amount : 0;
+
     const base = `${accountCode}|${transactionDate.toISOString().slice(0, 10)}|${description}|${credit.toFixed(2)}|${debit.toFixed(2)}`;
     const occurrence = (occurrences.get(base) ?? 0) + 1;
     occurrences.set(base, occurrence);
