@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { saveTransactionCategories } from "./bulk-actions";
+import { saveTransactionCategories, swapTransactionDirection } from "./bulk-actions";
 import { ACCOUNT_CATEGORIES } from "./categories";
 
 export const dynamic = "force-dynamic";
@@ -128,13 +128,16 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
             <>
               <div className="overflow-x-auto">
                 <table className="w-full table-fixed divide-y divide-slate-200 text-[11px] leading-tight">
-                  <colgroup><col className="w-[7%]" /><col className="w-[9%]" /><col className="w-[12%]" /><col className="w-[27%]" /><col className="w-[8%]" /><col className="w-[8%]" /><col className="w-[9%]" /><col className="w-[20%]" /></colgroup>
-                  <thead className="bg-slate-50"><tr>{["Date","Account","Category","Description","Credit","Debit","Balance","Amend category"].map((heading) => <th key={heading} className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-slate-500">{heading}</th>)}</tr></thead>
+                  <colgroup><col className="w-[7%]" /><col className="w-[8%]" /><col className="w-[11%]" /><col className="w-[24%]" /><col className="w-[7%]" /><col className="w-[7%]" /><col className="w-[8%]" /><col className="w-[18%]" /><col className="w-[10%]" /></colgroup>
+                  <thead className="bg-slate-50"><tr>{["Date","Account","Category","Description","Credit","Debit","Balance","Amend category","Direction"].map((heading) => <th key={heading} className="px-2 py-2 text-left text-[10px] font-semibold uppercase text-slate-500">{heading}</th>)}</tr></thead>
                   <tbody className="divide-y divide-slate-100">
                     {visibleRows.map((row) => (
                       <tr key={row.id} className={row.category === "Uncategorised" ? "bg-amber-50" : ""}>
                         <td className="whitespace-nowrap px-2 py-1.5 text-slate-700">{row.transactionDate.toLocaleDateString("en-GB")}</td><td className="truncate px-2 py-1.5 text-slate-700" title={row.accountName}>{row.accountName}</td><td className="truncate px-2 py-1.5 font-medium text-slate-700" title={row.category}>{row.category}</td><td className="truncate px-2 py-1.5 text-slate-900" title={row.description}>{row.description}</td><td className="whitespace-nowrap px-2 py-1.5 text-right text-emerald-700">{Number(row.credit) ? money(Number(row.credit)) : "-"}</td><td className="whitespace-nowrap px-2 py-1.5 text-right text-red-700">{Number(row.debit) ? money(Number(row.debit)) : "-"}</td><td className="whitespace-nowrap px-2 py-1.5 text-right font-semibold text-slate-900">{money(row.runningBalance)}</td>
                         <td className="px-2 py-1"><select name={`category:${row.id}`} defaultValue={row.category} className="w-full rounded border border-slate-300 bg-white px-1 py-1 text-[10px]">{ACCOUNT_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}</select></td>
+                        <td className="px-2 py-1 text-center">
+                          <button formAction={swapTransactionDirection} name="transactionId" value={row.id} className="rounded border border-slate-300 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50">Swap In / Out</button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
