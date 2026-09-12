@@ -41,19 +41,31 @@ export default async function AccountsPage({ searchParams }: { searchParams: Sea
   const toDate = parseFilterDate(params.to, true);
 
   const accounts = await prisma.financeAccount.findMany({
-    include: { transactions: { orderBy: [{ transactionDate: "asc" }, { createdAt: "asc" }] } },
+    include: { transactions: { orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }] } },
     orderBy: { name: "asc" },
   });
 
   const accountBalanceByCode = new Map<string, number>();
   const rowsWithBalance = accounts.flatMap((account) => {
-    let runningBalance = Number(account.openingBalance);
-    const rows = account.transactions.map((transaction) => {
-      runningBalance += Number(transaction.credit) - Number(transaction.debit);
-      return { ...transaction, accountName: account.name, accountCode: account.code, runningBalance };
+    const currentBalance = account.transactions.reduce(
+      (balance, transaction) => balance + Number(transaction.credit) - Number(transaction.debit),
+      Number(account.openingBalance),
+    );
+
+    accountBalanceByCode.set(account.code, currentBalance);
+
+    let balanceBeforeOlderTransaction = currentBalance;
+    return account.transactions.map((transaction) => {
+      const runningBalance = balanceBeforeOlderTransaction;
+      balanceBeforeOlderTransaction -= Number(transaction.credit) - Number(transaction.debit);
+
+      return {
+        ...transaction,
+        accountName: account.name,
+        accountCode: account.code,
+        runningBalance,
+      };
     });
-    accountBalanceByCode.set(account.code, runningBalance);
-    return rows;
   });
 
   const filteredRows = rowsWithBalance.filter((row) => {
