@@ -5,22 +5,20 @@ import { revalidatePath } from "next/cache";
 
 import { prisma } from "@/lib/prisma";
 
-export async function approvePayout(payoutId: string) {
+async function getTreasurer() {
   const treasurer = await prisma.user.findUnique({
-    where: {
-      email: "craig@example.com",
-    },
+    where: { email: "craig@example.com" },
   });
 
-  if (!treasurer) {
-    throw new Error("Treasurer user not found.");
-  }
+  if (!treasurer) throw new Error("Treasurer user not found.");
+  return treasurer;
+}
+
+export async function approvePayout(payoutId: string) {
+  const treasurer = await getTreasurer();
 
   const result = await prisma.payoutRequest.updateMany({
-    where: {
-      id: payoutId,
-      status: PayoutStatus.REQUESTED,
-    },
+    where: { id: payoutId, status: PayoutStatus.REQUESTED },
     data: {
       status: PayoutStatus.APPROVED,
       approvedById: treasurer.id,
@@ -28,10 +26,27 @@ export async function approvePayout(payoutId: string) {
     },
   });
 
-  if (result.count === 0) {
-    throw new Error("This payout has already been processed.");
-  }
+  if (result.count === 0) throw new Error("This payout has already been processed.");
 
   revalidatePath("/payouts/approval");
+  revalidatePath("/");
+}
+
+export async function rejectPayout(payoutId: string, reason = "Duplicate payout request") {
+  await getTreasurer();
+
+  const result = await prisma.payoutRequest.updateMany({
+    where: { id: payoutId, status: PayoutStatus.REQUESTED },
+    data: {
+      status: PayoutStatus.REJECTED,
+      rejectedAt: new Date(),
+      rejectedReason: reason,
+    },
+  });
+
+  if (result.count === 0) throw new Error("This payout has already been processed.");
+
+  revalidatePath("/payouts/approval");
+  revalidatePath("/payouts/history");
   revalidatePath("/");
 }
