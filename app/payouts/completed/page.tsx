@@ -84,8 +84,10 @@ export default async function CompletedPayoutsPage() {
 
         status: {
           in: [
+            PayoutStatus.REQUESTED,
             PayoutStatus.APPROVED,
             PayoutStatus.PAID,
+            PayoutStatus.REJECTED,
           ],
         },
       },
@@ -120,7 +122,7 @@ export default async function CompletedPayoutsPage() {
             href="/payouts/completed"
             className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
           >
-            Completed payouts
+            Payout status
           </a>
         </div>
 
@@ -130,23 +132,22 @@ export default async function CompletedPayoutsPage() {
           </p>
 
           <h1 className="mt-2 text-3xl font-bold text-slate-900">
-            Completed payouts
+            Payout status
           </h1>
 
           <p className="mt-2 text-slate-600">
-            See when the section payment has been completed by the Treasurer
-            and when individual player top-ups have been completed by Kevin.
+            See every payout request from submission through approval, section payment and player top-ups, including rejected requests.
           </p>
         </div>
 
         {payouts.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
             <p className="font-semibold text-slate-900">
-              No approved payouts yet.
+              No payout requests yet.
             </p>
 
             <p className="mt-2 text-sm text-slate-500">
-              Approved and completed payments for {section.name} will appear here.
+              Payout requests for {section.name} will appear here.
             </p>
           </div>
         ) : (
@@ -184,6 +185,24 @@ export default async function CompletedPayoutsPage() {
                 sectionComplete &&
                 playersComplete;
 
+              const requestStatus =
+                payout.status === PayoutStatus.REJECTED
+                  ? "Rejected"
+                  : payout.status === PayoutStatus.REQUESTED
+                    ? "Awaiting Treasurer approval"
+                    : fullyComplete
+                      ? "Complete"
+                      : "Approved — in progress";
+
+              const statusClasses =
+                payout.status === PayoutStatus.REJECTED
+                  ? "bg-red-100 text-red-800"
+                  : payout.status === PayoutStatus.REQUESTED
+                    ? "bg-amber-100 text-amber-800"
+                    : fullyComplete
+                      ? "bg-emerald-100 text-emerald-800"
+                      : "bg-blue-100 text-blue-800";
+
               return (
                 <section
                   key={payout.id}
@@ -197,21 +216,21 @@ export default async function CompletedPayoutsPage() {
                         </h2>
 
                         <span
-                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                            fullyComplete
-                              ? "bg-emerald-100 text-emerald-800"
-                              : "bg-amber-100 text-amber-800"
-                          }`}
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClasses}`}
                         >
-                          {fullyComplete
-                            ? "Complete"
-                            : "In progress"}
+                          {requestStatus}
                         </span>
                       </div>
 
                       <p className="mt-2 text-xs text-slate-500">
                         {payout.reference}
                       </p>
+
+                      {payout.status === PayoutStatus.REJECTED && payout.rejectedReason && (
+                        <p className="mt-2 text-sm font-medium text-red-700">
+                          Reason: {payout.rejectedReason}
+                        </p>
+                      )}
                     </div>
 
                     <div className="text-left sm:text-right">
@@ -228,6 +247,7 @@ export default async function CompletedPayoutsPage() {
                     </div>
                   </div>
 
+                  {payout.status !== PayoutStatus.REJECTED && payout.status !== PayoutStatus.REQUESTED && (
                   <div className="mt-6 grid gap-4 md:grid-cols-2">
                     <div
                       className={`rounded-lg border p-4 ${
@@ -359,6 +379,7 @@ export default async function CompletedPayoutsPage() {
                       )}
                     </div>
                   </div>
+                  )}
                 </section>
               );
             })}
