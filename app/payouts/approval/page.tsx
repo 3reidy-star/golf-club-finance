@@ -2,7 +2,7 @@ import { PayoutStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 
-import { approvePayout } from "./actions";
+import { approvePayout, rejectPayout } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -237,20 +237,37 @@ export default async function ApprovalPage() {
                         </div>
                       </div>
 
-                      <form
-                        action={async () => {
-                          "use server";
+                      <div className="flex flex-wrap gap-3">
+                        <form
+                          action={async () => {
+                            "use server";
 
-                          await approvePayout(payout.id);
-                        }}
-                      >
-                        <button
-                          type="submit"
-                          className="whitespace-nowrap rounded-lg bg-emerald-700 px-6 py-3 font-semibold text-white hover:bg-emerald-800"
+                            await rejectPayout(payout.id, "Duplicate payout request");
+                          }}
                         >
-                          Approve Complete Payout
-                        </button>
-                      </form>
+                          <button
+                            type="submit"
+                            className="whitespace-nowrap rounded-lg border border-red-300 bg-white px-6 py-3 font-semibold text-red-700 hover:bg-red-50"
+                          >
+                            Reject Duplicate
+                          </button>
+                        </form>
+
+                        <form
+                          action={async () => {
+                            "use server";
+
+                            await approvePayout(payout.id);
+                          }}
+                        >
+                          <button
+                            type="submit"
+                            className="whitespace-nowrap rounded-lg bg-emerald-700 px-6 py-3 font-semibold text-white hover:bg-emerald-800"
+                          >
+                            Approve Complete Payout
+                          </button>
+                        </form>
+                      </div>
                     </div>
                   </div>
                 </div>
