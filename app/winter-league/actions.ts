@@ -52,13 +52,29 @@ export async function importWinterLeagueRound(formData: FormData) {
   for (const cells of parsed) {
     const rawPos = cells[0]?.match(/^\d+/)?.[0];
     if (!rawPos) continue;
-    const position = Number(rawPos);
+
+    const originalPosition = Number(rawPos);
     const name = nameFrom(cells, true);
     const player = byKey.get(key(name));
+
+    // Non-eligible players are ignored completely. Eligible players are
+    // re-ranked in their finishing order, so the first eligible player gets
+    // 20 points, the second eligible player 19 points, etc.
     if (!player) continue;
-    const points = Math.max(0, 21 - position);
-    await prisma.winterLeagueResult.create({ data: { roundId: round.id, playerId: player.id, position, points, score: cells.slice(2).join(" ") || null } });
+
     included++;
+    const eligiblePosition = included;
+    const points = Math.max(0, 21 - eligiblePosition);
+
+    await prisma.winterLeagueResult.create({
+      data: {
+        roundId: round.id,
+        playerId: player.id,
+        position: eligiblePosition,
+        points,
+        score: `Overall finish ${originalPosition}${cells.slice(2).length ? ` — ${cells.slice(2).join(" ")}` : ""}`,
+      },
+    });
   }
   revalidatePath("/winter-league");
 }
