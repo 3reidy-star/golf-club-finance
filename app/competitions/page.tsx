@@ -45,6 +45,21 @@ export default function CompetitionsPage() {
             </p>
           </a>
 
+          <a
+            href="/winter-league"
+            className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+          >
+            <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Men&apos;s Section
+            </p>
+            <h2 className="mt-2 text-xl font-semibold text-slate-900">
+              Winter League
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Import rounds 1–6 and maintain the best-5 overall Winter League standings.
+            </p>
+          </a>
+
           <div className="rounded-xl border border-slate-200 bg-white p-6 opacity-60 shadow-sm">
             <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
               Juniors
