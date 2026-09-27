@@ -13,6 +13,7 @@ enum UserRole {
   TREASURER
   TOPUP_ADMIN
   SECTION_USER
+  COMPETITIONS
 }
 
 enum SectionCode {
