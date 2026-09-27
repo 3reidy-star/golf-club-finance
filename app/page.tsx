@@ -76,6 +76,12 @@ export default async function Home() {
       href: "/competitions",
       outstanding: 0,
     },
+    {
+      title: "Winter League",
+      description: "Import the six rounds and maintain best-5 overall standings.",
+      href: "/winter-league",
+      outstanding: 0,
+    },
     ...(isTreasurer
       ? [
           {
