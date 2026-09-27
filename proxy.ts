@@ -28,11 +28,17 @@ export default auth((request) => {
   if (pathname === "/login") {
     if (role === "TOPUP_ADMIN") return NextResponse.redirect(new URL("/payouts/top-ups", request.nextUrl));
     if (role === "SECTION_USER") return NextResponse.redirect(new URL("/payouts/new", request.nextUrl));
+    if (role === "COMPETITIONS") return NextResponse.redirect(new URL("/competitions", request.nextUrl));
     return NextResponse.redirect(new URL("/", request.nextUrl));
   }
 
   if (role === "ADMIN") return NextResponse.next();
   if (role === "TREASURER") return NextResponse.next();
+
+  if (role === "COMPETITIONS") {
+    if (pathname === "/competitions" || pathname.startsWith("/competitions/") || pathname === "/winter-league" || pathname.startsWith("/winter-league/")) return NextResponse.next();
+    return NextResponse.redirect(new URL("/competitions", request.nextUrl));
+  }
 
   if (role === "TOPUP_ADMIN") {
     if (pathname === "/payouts/top-ups" || pathname.startsWith("/payouts/top-ups/")) return NextResponse.next();
