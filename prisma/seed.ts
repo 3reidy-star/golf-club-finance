@@ -117,16 +117,6 @@ async function main() {
     },
 
     {
-      username: "competitions",
-      email: "competitions@golfclub.local",
-      name: "Competitions",
-      role: "COMPETITIONS" as const,
-      passwordEnv:
-        "SEED_COMPETITIONS_PASSWORD",
-      sectionCode: null,
-    },
-
-    {
       username: "mens",
       email: "mens@golfclub.local",
       name: "Men's Section",
@@ -251,7 +241,6 @@ async function main() {
   console.log("  admin");
   console.log("  treasurer");
   console.log("  kevin");
-  console.log("  competitions");
   console.log("  mens");
   console.log("  seniors");
   console.log("  ladies");
