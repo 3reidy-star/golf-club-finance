@@ -281,3 +281,40 @@ model AccountTransaction {
   @@index([accountCode, category])
   @@index([accountCode, reconciled])
 }
+
+
+model WinterLeaguePlayer {
+  id        String   @id @default(cuid())
+  name      String
+  nameKey   String   @unique
+  active    Boolean  @default(true)
+  results   WinterLeagueResult[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WinterLeagueRound {
+  id        String   @id @default(cuid())
+  roundNo   Int      @unique
+  name      String?
+  playedAt  DateTime?
+  results   WinterLeagueResult[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WinterLeagueResult {
+  id        String   @id @default(cuid())
+  roundId   String
+  playerId  String
+  position  Int
+  score     String?
+  points    Int
+  round     WinterLeagueRound  @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  player    WinterLeaguePlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([roundId, playerId])
+  @@index([playerId])
+}
