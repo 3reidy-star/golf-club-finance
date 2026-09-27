@@ -61,5 +61,4 @@ export async function importWinterLeagueRound(formData: FormData) {
     included++;
   }
   revalidatePath("/winter-league");
-  return { included };
 }
