@@ -12,6 +12,7 @@ export default async function Home() {
   if (!session?.user) redirect("/login");
   if (session.user.role === "SECTION_USER") redirect("/payouts/new");
   if (session.user.role === "TOPUP_ADMIN") redirect("/payouts/top-ups");
+  if (session.user.role === "COMPETITIONS") redirect("/competitions");
 
   const isTreasurer = session.user.role === "TREASURER";
 
@@ -74,12 +75,6 @@ export default async function Home() {
       title: "Competitions",
       description: "Competition calculations and Intelligent Golf import.",
       href: "/competitions",
-      outstanding: 0,
-    },
-    {
-      title: "Winter League",
-      description: "Import the six rounds and maintain best-5 overall standings.",
-      href: "/winter-league",
       outstanding: 0,
     },
     ...(isTreasurer
