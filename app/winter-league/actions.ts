@@ -21,7 +21,13 @@ function nameFrom(cells: string[], positionExpected: boolean) {
 
 async function requireTreasurer() {
   const s = await auth();
-  if (!s?.user || (s.user.role !== "TREASURER" && s.user.role !== "ADMIN")) throw new Error("Treasurer access only.");
+
+  if (
+    !s?.user ||
+    !["TREASURER", "ADMIN", "COMPETITIONS"].includes(s.user.role)
+  ) {
+    throw new Error("Competitions access only.");
+  }
 }
 
 export async function importWinterLeaguePlayers(formData: FormData) {
