@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export default async function WinterLeaguePage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (session.user.role !== "TREASURER" && session.user.role !== "ADMIN") redirect("/");
+  if (!["TREASURER", "ADMIN", "COMPETITIONS"].includes(session.user.role)) redirect("/");
 
   const [players, rounds] = await Promise.all([
     prisma.winterLeaguePlayer.findMany({ where: { active: true }, include: { results: { include: { round: true } } }, orderBy: { name: "asc" } }),
