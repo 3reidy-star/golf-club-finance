@@ -17,6 +17,47 @@ export function buildMensCompetitionPreview(input: {
   });
 
   const useManualTwos = input.twosEntrantsOverride !== null && input.twosEntrantsOverride !== undefined;
+  const hasImportedTwos = base.importData.twosPaidPlayers.length > 0;
+
+  // If no Birdie 2s paid-player list was pasted, do not infer a 2s pot from
+  // winners or other competition text. Treat it as zero unless the user has
+  // explicitly entered a manual 2s entrant count.
+  if (!useManualTwos && !hasImportedTwos) {
+    const calculation = calculateMensCompetition({
+      entrants: input.entrants,
+      entryFee: input.entryFee,
+      twosEntrants: 0,
+      twosEntryFee: base.importData.twosEntryFee,
+      twosWinners: 0,
+      feeRate: 0.04,
+    });
+
+    const errors = base.errors.filter(
+      (message) =>
+        !message.includes("Birdie 2s winners were found") &&
+        !message.includes("is shown as a Birdie 2 winner but is not in the list of players who paid"),
+    );
+
+    const playerPayouts = base.playerPayouts
+      .map((player) => ({
+        ...player,
+        awards: player.awards.filter((award) => !award.description.startsWith("Birdie 2")),
+      }))
+      .map((player) => ({
+        ...player,
+        amount: roundMoney(player.awards.reduce((total, award) => total + award.amount, 0)),
+      }))
+      .filter((player) => player.amount > 0);
+
+    return {
+      ...base,
+      calculation,
+      playerPayouts,
+      sectionPayment: calculation.netSectionTopUp,
+      errors,
+    };
+  }
+
   if (!useManualTwos) return base;
 
   const twosEntrants = Math.max(0, Number(input.twosEntrantsOverride ?? 0));
