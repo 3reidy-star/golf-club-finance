@@ -315,6 +315,7 @@ export function parseIntelligentGolf(
   let currentDivision: number | null = null;
   let readingTwosPaid = false;
   let readingTwosNotPaid = false;
+  let inBirdieTwosSection = false;
 
   const detectedDate =
     parseDateFromText(rawText);
@@ -349,7 +350,10 @@ export function parseIntelligentGolf(
 
     if (twosFeeMatch) {
       twosEntryFee = Number(twosFeeMatch[1]);
+      inBirdieTwosSection = true;
       currentDivision = null;
+      readingTwosPaid = false;
+      readingTwosNotPaid = false;
       continue;
     }
 
