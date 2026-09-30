@@ -7,11 +7,13 @@ export function buildMensCompetitionPreview(input: {
   entryFee?: number;
   twosEntrantsOverride?: number | null;
   twosWinnersPresent?: boolean | null;
+  divisionCount?: 1 | 2 | 3;
 }): MensImportPreview {
   const base = buildMensImportPreview({
     rawText: input.rawText,
     entrants: input.entrants,
     entryFee: input.entryFee,
+    divisionCount: input.divisionCount,
   });
 
   const useManualTwos = input.twosEntrantsOverride !== null && input.twosEntrantsOverride !== undefined;
