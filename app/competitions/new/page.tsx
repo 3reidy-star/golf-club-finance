@@ -4,11 +4,15 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 import { buildMensCompetitionPreview } from "@/lib/mensCompetitionPreview";
-import { createMensCompetitionFromImport } from "./actions";
+import { createMensCompetitionFromImport, createMensCompetitionManual } from "./actions";
 
 export default function NewCompetitionPage() {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [mode, setMode] = useState<"import" | "manual">("import");
+  const [divisionCount, setDivisionCount] = useState<1 | 2 | 3>(1);
+  const [manualLines, setManualLines] = useState([{ playerName: "", reason: "", amount: "" }]);
+  const [manualSectionPayment, setManualSectionPayment] = useState("");
   const [name, setName] = useState("");
   const [competitionDate, setCompetitionDate] = useState("");
   const [entrants, setEntrants] = useState("");
@@ -29,6 +33,7 @@ export default function NewCompetitionPage() {
       rawText: intelligentGolfText,
       entrants: entrantCount,
       entryFee: Number(entryFee) || 5,
+      divisionCount,
       twosEntrantsOverride: smallCompetition ? Number(twosEntrants || 0) : null,
       twosWinnersPresent: smallCompetition
         ? twosWinnersPresent === ""
@@ -40,6 +45,7 @@ export default function NewCompetitionPage() {
     intelligentGolfText,
     entrantCount,
     entryFee,
+    divisionCount,
     smallCompetition,
     twosEntrants,
     twosWinnersPresent,
@@ -67,6 +73,7 @@ export default function NewCompetitionPage() {
           entrants: entrantCount,
           entryFee: Number(entryFee),
           intelligentGolfText,
+          divisionCount,
           twosEntrantsOverride: smallCompetition ? Number(twosEntrants || 0) : null,
           twosWinnersPresent: smallCompetition ? twosWinnersPresent === "yes" : null,
           notes,
@@ -104,6 +111,14 @@ export default function NewCompetitionPage() {
           <p className="mt-2 max-w-3xl text-slate-600">
             Paste the competition results from Intelligent Golf and the system will calculate the payouts.
           </p>
+        </div>
+
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-slate-900">How do you want to create the payout?</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button type="button" onClick={() => setMode("import")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${mode === "import" ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>Import from Intelligent Golf</button>
+            <button type="button" onClick={() => setMode("manual")} className={`rounded-lg px-4 py-2 text-sm font-semibold ${mode === "manual" ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700"}`}>Manual payout</button>
+          </div>
         </div>
 
         <div className="grid gap-6 xl:grid-cols-[430px_1fr]">
@@ -150,10 +165,19 @@ export default function NewCompetitionPage() {
                     />
                   </Field>
                 </div>
+                {mode === "import" && (
+                  <Field label="Number of divisions">
+                    <select value={divisionCount} onChange={(e) => setDivisionCount(Number(e.target.value) as 1 | 2 | 3)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2">
+                      <option value={1}>1 division</option>
+                      <option value={2}>2 divisions</option>
+                      <option value={3}>3 divisions</option>
+                    </select>
+                  </Field>
+                )}
               </div>
             </section>
 
-            {smallCompetition && (
+            {mode === "import" && smallCompetition && (
               <section className="rounded-xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
                   Fewer than 10 players
@@ -200,7 +224,7 @@ export default function NewCompetitionPage() {
               </section>
             )}
 
-            <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            {mode === "import" && <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Paste from Intelligent Golf</h2>
               <textarea
                 value={intelligentGolfText}
@@ -209,11 +233,36 @@ export default function NewCompetitionPage() {
                 placeholder="Paste Intelligent Golf information here..."
                 className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-3 font-mono text-sm text-slate-900"
               />
-            </section>
+            </section>}
+
+            {mode === "manual" && (
+              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">Manual player payouts</h2>
+                <div className="mt-4 space-y-3">
+                  {manualLines.map((line, index) => (
+                    <div key={index} className="grid gap-2 sm:grid-cols-[1fr_1fr_110px]">
+                      <input placeholder="Player name" value={line.playerName} onChange={(e) => setManualLines((lines) => lines.map((item, i) => i === index ? {...item, playerName: e.target.value} : item))} className="rounded-lg border px-3 py-2 text-sm" />
+                      <input placeholder="Prize / reason" value={line.reason} onChange={(e) => setManualLines((lines) => lines.map((item, i) => i === index ? {...item, reason: e.target.value} : item))} className="rounded-lg border px-3 py-2 text-sm" />
+                      <input type="number" step="0.01" placeholder="£" value={line.amount} onChange={(e) => setManualLines((lines) => lines.map((item, i) => i === index ? {...item, amount: e.target.value} : item))} className="rounded-lg border px-3 py-2 text-sm" />
+                    </div>
+                  ))}
+                </div>
+                <button type="button" onClick={() => setManualLines((lines) => [...lines, {playerName:"",reason:"",amount:""}])} className="mt-3 rounded-lg border px-3 py-2 text-sm font-semibold">+ Add payout</button>
+                <Field label="Men's Section payment"><input type="number" step="0.01" min="0" value={manualSectionPayment} onChange={(e) => setManualSectionPayment(e.target.value)} className="w-full rounded-lg border px-3 py-2" /></Field>
+              </section>
+            )}
           </div>
 
           <div className="space-y-6">
-            {!preview ? (
+            {mode === "manual" ? (
+              <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">Manual payout summary</h2>
+                {(() => { const income=(Number(entrants)||0)*(Number(entryFee)||0); const players=manualLines.reduce((s,l)=>s+(Number(l.amount)||0),0); const section=Number(manualSectionPayment)||0; const difference=income-players-section; return <div className="mt-5 space-y-3"><MoneyRow label="Competition income" value={income}/><MoneyRow label="Player payouts" value={players}/><MoneyRow label="Men's section payment" value={section}/><MoneyRow label="Difference" value={difference} bold/></div>; })()}
+                <Field label="Notes"><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} rows={3} className="w-full rounded-lg border px-3 py-2"/></Field>
+                {error && <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+                <button type="button" disabled={isPending} onClick={() => { setError(null); startTransition(async()=>{ try { await createMensCompetitionManual({name,competitionDate,entrants:entrantCount,entryFee:Number(entryFee),playerPayouts:manualLines.map(l=>({playerName:l.playerName,reason:l.reason,amount:Number(l.amount)})),sectionPayment:Number(manualSectionPayment)||0,notes}); router.push("/payouts/approval"); router.refresh(); } catch(err){setError(err instanceof Error?err.message:"Unable to create payout.");}}); }} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{isPending?"Creating Payout...":"Create Manual Competition Payout"}</button>
+              </section>
+            ) : !preview ? (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
                 <p className="text-lg font-semibold text-slate-900">
                   Paste the Intelligent Golf information to begin
