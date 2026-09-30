@@ -10,6 +10,7 @@ type CreateCompetitionInput = {
   entryFee: number;
   intelligentGolfText: string;
   divisionTexts?: string[];
+  grossResultsText?: string;
   twosPaidText?: string;
   twosWinnersText?: string;
   divisionCount?: 1 | 2 | 3;
@@ -51,6 +52,7 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
   const preview = buildMensCompetitionPreview({
     rawText: input.intelligentGolfText,
     divisionTexts: input.divisionTexts,
+    grossResultsText: input.grossResultsText,
     twosPaidText: input.twosPaidText,
     twosWinnersText: input.twosWinnersText,
     entrants,
