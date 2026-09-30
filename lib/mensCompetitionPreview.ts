@@ -55,32 +55,32 @@ function parseResults(text: string, division: number): ImportedGolfResult[] {
 
 function parseNames(text: string): string[] {
   const lines = text.split(/\r?\n/).map(clean).filter(Boolean);
-  const hasPaidMarker = lines.some((line) =>
+
+  // The dedicated Birdie 2 entrants box may contain either:
+  // 1) just the paid player names, or
+  // 2) the full Intelligent Golf Birdie 2 section with paid/not-paid headings.
+  const paidHeadingIndex = lines.findIndex((line) =>
     /following players paid from an account/i.test(line),
   );
+  const notPaidHeadingIndex = lines.findIndex((line) =>
+    /following players did not pay/i.test(line),
+  );
 
-  const names: string[] = [];
-  let readingPaid = !hasPaidMarker;
+  const candidateLines =
+    paidHeadingIndex >= 0
+      ? lines.slice(
+          paidHeadingIndex + 1,
+          notPaidHeadingIndex > paidHeadingIndex ? notPaidHeadingIndex : lines.length,
+        )
+      : lines;
 
-  for (const line of lines) {
-    if (/following players paid from an account/i.test(line)) {
-      readingPaid = true;
-      continue;
-    }
-
-    if (/following players did not pay/i.test(line)) {
-      readingPaid = false;
-      continue;
-    }
-
-    if (!readingPaid) continue;
-    if (line.startsWith("#")) continue;
-    if (/^birdie\s*2/i.test(line)) continue;
-    if (/^open\s+/i.test(line)) continue;
-
-    const name = line.replace(/^[-•]\s*/, "").trim();
-    if (name) names.push(name);
-  }
+  const names = candidateLines
+    .filter((line) => !line.startsWith("#"))
+    .filter((line) => !/^birdie\s*2/i.test(line))
+    .filter((line) => !/^open\s+/i.test(line))
+    .filter((line) => !/following players/i.test(line))
+    .map((line) => line.replace(/^[-•]\s*/, "").trim())
+    .filter(Boolean);
 
   return Array.from(new Map(names.map((name) => [nameKey(name), name])).values());
 }
