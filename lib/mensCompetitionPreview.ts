@@ -179,9 +179,11 @@ export function buildMensCompetitionPreview(input: Input): MensImportPreview {
     }
   }
 
+  const warnings: string[] = [];
+
   for (const winner of pastedWinners) {
     if (!paidSet.has(nameKey(winner.playerName))) {
-      errors.push(`${winner.playerName} is shown as a Birdie 2 winner but is not in the Birdie 2 entrants list.`);
+      warnings.push(`${winner.playerName} is shown as a Birdie 2 winner but is not in the Birdie 2 entrants list. No Birdie 2 payout has been allocated to them.`);
     }
   }
 
@@ -256,6 +258,6 @@ export function buildMensCompetitionPreview(input: Input): MensImportPreview {
     ),
     sectionPayment: calculation.netSectionTopUp,
     errors,
-    warnings: [],
+    warnings,
   };
 }
