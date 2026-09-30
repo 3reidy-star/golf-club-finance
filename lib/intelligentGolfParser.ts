@@ -196,6 +196,36 @@ function parseDateFromText(
   )}-${String(day).padStart(2, "0")}`;
 }
 
+function isSingleDivisionResultsHeader(line: string) {
+  const text = cleanText(line).toLowerCase();
+  return text === "results points switch to gross points" ||
+    text.startsWith("results points") ||
+    text === "results";
+}
+
+function parsePointsResultLine(
+  line: string,
+  division: number,
+): ImportedGolfResult | null {
+  // Intelligent Golf points format:
+  // 1st Adam Levoi(6) 35
+  const match = line.match(
+    /^\s*(\d+(?:st|nd|rd|th))\s+(.+?)\s*\((\d+)\)\s+(\d+(?:\.\d+)?)\s*$/i,
+  );
+
+  if (!match) return null;
+
+  const points = Number(match[4]);
+  return {
+    division,
+    place: cleanText(match[1]),
+    playerName: cleanText(match[2]),
+    handicap: Number(match[3]),
+    nett: points,
+    gross: points,
+  };
+}
+
 function parsePlainResultLine(
   line: string,
   division: number,
@@ -295,6 +325,13 @@ export function parseIntelligentGolf(
     const detectedDivision =
       divisionFromLine(line);
 
+    if (isSingleDivisionResultsHeader(line)) {
+      currentDivision = 1;
+      readingTwosPaid = false;
+      readingTwosNotPaid = false;
+      continue;
+    }
+
     if (detectedDivision) {
       currentDivision = detectedDivision;
       readingTwosPaid = false;
@@ -341,6 +378,10 @@ export function parseIntelligentGolf(
     if (currentDivision) {
       const plainResult =
         parsePlainResultLine(
+          line,
+          currentDivision,
+        ) ??
+        parsePointsResultLine(
           line,
           currentDivision,
         );
