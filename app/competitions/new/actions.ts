@@ -35,19 +35,6 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
   if (entryFee <= 0) throw new Error("Entry fee must be greater than zero.");
 
   const smallCompetition = entrants < 10;
-  const manualTwosEntrants = Number(input.twosEntrantsOverride ?? 0);
-
-  if (smallCompetition && manualTwosEntrants < 0) {
-    throw new Error("Birdie 2s entrants cannot be negative.");
-  }
-
-  if (
-    smallCompetition &&
-    input.twosWinnersPresent !== true &&
-    input.twosWinnersPresent !== false
-  ) {
-    throw new Error("Please confirm whether there were any Birdie 2s winners.");
-  }
 
   const preview = buildMensCompetitionPreview({
     rawText: input.intelligentGolfText,
@@ -58,8 +45,8 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
     entrants,
     entryFee,
     divisionCount: input.divisionCount,
-    twosEntrantsOverride: smallCompetition ? manualTwosEntrants : null,
-    twosWinnersPresent: smallCompetition ? input.twosWinnersPresent ?? null : null,
+    twosEntrantsOverride: null,
+    twosWinnersPresent: null,
   });
 
   if (preview.errors.length > 0) {
@@ -73,12 +60,8 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
   if (!user) throw new Error("Treasurer user not found.");
 
   const reference = `COMP-${Date.now()}`;
-  const twosEntrants: number = smallCompetition
-    ? manualTwosEntrants
-    : preview.importData.twosPaidPlayers.length;
-  const twosWinners: number = smallCompetition && input.twosWinnersPresent === false
-    ? 0
-    : preview.importData.twosWinners.length;
+  const twosEntrants = preview.importData.twosPaidPlayers.length;
+  const twosWinners = preview.importData.twosWinners.length;
 
   return prisma.$transaction(async (tx) => {
     const competition = await tx.competition.create({
