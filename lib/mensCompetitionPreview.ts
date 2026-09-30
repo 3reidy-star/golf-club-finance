@@ -54,15 +54,33 @@ function parseResults(text: string, division: number): ImportedGolfResult[] {
 }
 
 function parseNames(text: string): string[] {
-  const names = text
-    .split(/\r?\n/)
-    .map(clean)
-    .filter(Boolean)
-    .filter((line) => !line.startsWith("#"))
-    .filter((line) => !/^the following players/i.test(line))
-    .filter((line) => !/^birdie\s*2/i.test(line))
-    .map((line) => line.replace(/^[-•]\s*/, "").trim())
-    .filter(Boolean);
+  const lines = text.split(/\r?\n/).map(clean).filter(Boolean);
+  const hasPaidMarker = lines.some((line) =>
+    /following players paid from an account/i.test(line),
+  );
+
+  const names: string[] = [];
+  let readingPaid = !hasPaidMarker;
+
+  for (const line of lines) {
+    if (/following players paid from an account/i.test(line)) {
+      readingPaid = true;
+      continue;
+    }
+
+    if (/following players did not pay/i.test(line)) {
+      readingPaid = false;
+      continue;
+    }
+
+    if (!readingPaid) continue;
+    if (line.startsWith("#")) continue;
+    if (/^birdie\s*2/i.test(line)) continue;
+    if (/^open\s+/i.test(line)) continue;
+
+    const name = line.replace(/^[-•]\s*/, "").trim();
+    if (name) names.push(name);
+  }
 
   return Array.from(new Map(names.map((name) => [nameKey(name), name])).values());
 }
