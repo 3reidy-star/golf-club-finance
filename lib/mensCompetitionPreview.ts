@@ -22,7 +22,7 @@ export function buildMensCompetitionPreview(input: {
         ? `\n\nGross Results\n${input.grossResultsText}`
         : "") +
       (input.twosPaidText?.trim()
-        ? `\n\nFollowing players paid from an account\n${input.twosPaidText}`
+        ? `\n\nBirdie 2's (£1.00)\nFollowing players paid from an account\n${input.twosPaidText}`
         : "") +
       (input.twosWinnersText?.trim()
         ? `\n\n${input.twosWinnersText}`
