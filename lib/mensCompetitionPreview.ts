@@ -36,6 +36,20 @@ export function buildMensCompetitionPreview(input: {
     divisionCount: input.divisionCount,
   });
 
+  // The new UI provides Birdie 2 entrants in their own box. Treat that box as
+  // authoritative instead of asking the general Intelligent Golf parser to
+  // infer which "paid from an account" list belongs to the 2s.
+  if (input.twosPaidText !== undefined) {
+    const paidPlayers = input.twosPaidText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith("#") && !/^\*?the following players/i.test(line))
+      .map((line) => line.replace(/^[-*•]\s*/, "").trim())
+      .filter(Boolean);
+
+    base.importData.twosPaidPlayers = Array.from(new Set(paidPlayers));
+  }
+
   const useManualTwos = input.twosEntrantsOverride !== null && input.twosEntrantsOverride !== undefined;
   const hasImportedTwos = base.importData.twosPaidPlayers.length > 0;
 
