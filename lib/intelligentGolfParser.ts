@@ -221,8 +221,12 @@ function parsePointsResultLine(
     place: cleanText(match[1]),
     playerName: cleanText(match[2]),
     handicap: Number(match[3]),
+    // Points competitions do not provide nett/gross stroke scores in this
+    // clipboard format. Keep the points value for display without inventing
+    // a gross score from handicap + points.
     nett: points,
     gross: points,
+    reportedGross: points,
   };
 }
 
