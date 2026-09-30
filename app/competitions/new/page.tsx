@@ -42,12 +42,8 @@ export default function NewCompetitionPage() {
       entrants: entrantCount,
       entryFee: Number(entryFee) || 5,
       divisionCount,
-      twosEntrantsOverride: smallCompetition ? Number(twosEntrants || 0) : null,
-      twosWinnersPresent: smallCompetition
-        ? twosWinnersPresent === ""
-          ? null
-          : twosWinnersPresent === "yes"
-        : null,
+      twosEntrantsOverride: null,
+      twosWinnersPresent: null,
     });
   }, [
     intelligentGolfText,
@@ -72,11 +68,6 @@ export default function NewCompetitionPage() {
   function handleSubmit() {
     setError(null);
 
-    if (smallCompetition && twosWinnersPresent === "") {
-      setError("Please confirm whether there were any Birdie 2s winners.");
-      return;
-    }
-
     startTransition(async () => {
       try {
         await createMensCompetitionFromImport({
@@ -90,8 +81,8 @@ export default function NewCompetitionPage() {
           twosPaidText,
           twosWinnersText,
           divisionCount,
-          twosEntrantsOverride: smallCompetition ? Number(twosEntrants || 0) : null,
-          twosWinnersPresent: smallCompetition ? twosWinnersPresent === "yes" : null,
+          twosEntrantsOverride: null,
+          twosWinnersPresent: null,
           notes,
         });
 
@@ -193,7 +184,7 @@ export default function NewCompetitionPage() {
               </div>
             </section>
 
-            {mode === "import" && smallCompetition && (
+            {false && (
               <section className="rounded-xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
                   Fewer than 10 players
@@ -433,7 +424,7 @@ export default function NewCompetitionPage() {
                     disabled={
                       isPending ||
                       preview.errors.length > 0 ||
-                      (smallCompetition && twosWinnersPresent === "")
+                      false
                     }
                     className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-50"
                   >
