@@ -9,6 +9,9 @@ type CreateCompetitionInput = {
   entrants: number;
   entryFee: number;
   intelligentGolfText: string;
+  divisionTexts?: string[];
+  twosPaidText?: string;
+  twosWinnersText?: string;
   divisionCount?: 1 | 2 | 3;
   twosEntrantsOverride?: number | null;
   twosWinnersPresent?: boolean | null;
@@ -20,8 +23,8 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
 
   if (!name) throw new Error("Please enter a competition name.");
   if (!input.competitionDate) throw new Error("Please enter the competition date.");
-  if (!input.intelligentGolfText.trim()) {
-    throw new Error("Paste the Intelligent Golf competition information first.");
+  if (!input.intelligentGolfText.trim() && !input.divisionTexts?.some((text) => text.trim())) {
+    throw new Error("Paste the Division 1 competition results first.");
   }
 
   const entrants = Number(input.entrants);
@@ -47,6 +50,9 @@ export async function createMensCompetitionFromImport(input: CreateCompetitionIn
 
   const preview = buildMensCompetitionPreview({
     rawText: input.intelligentGolfText,
+    divisionTexts: input.divisionTexts,
+    twosPaidText: input.twosPaidText,
+    twosWinnersText: input.twosWinnersText,
     entrants,
     entryFee,
     divisionCount: input.divisionCount,
