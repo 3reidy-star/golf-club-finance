@@ -640,6 +640,7 @@ export function buildMensImportPreview(
     rawText: string;
     entrants: number;
     entryFee?: number;
+    divisionCount?: 1 | 2 | 3;
   },
 ): MensImportPreview {
   const importData =
@@ -674,6 +675,7 @@ export function buildMensImportPreview(
   }
 
   const divisionsRequired =
+    input.divisionCount ??
     requiredDivisionCount(
       entrants,
     );
