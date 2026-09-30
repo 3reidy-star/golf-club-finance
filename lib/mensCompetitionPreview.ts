@@ -3,14 +3,30 @@ import { calculateMensCompetition, roundMoney } from "@/lib/payoutCalculator";
 
 export function buildMensCompetitionPreview(input: {
   rawText: string;
+  divisionTexts?: string[];
+  twosPaidText?: string;
+  twosWinnersText?: string;
   entrants: number;
   entryFee?: number;
   twosEntrantsOverride?: number | null;
   twosWinnersPresent?: boolean | null;
   divisionCount?: 1 | 2 | 3;
 }): MensImportPreview {
+  const combinedRawText = input.divisionTexts?.length
+    ? input.divisionTexts
+        .filter((text) => text.trim())
+        .map((text, index) => `Division ${index + 1} Results\n${text}`)
+        .join("\n\n") +
+      (input.twosPaidText?.trim()
+        ? `\n\nFollowing players paid from an account\n${input.twosPaidText}`
+        : "") +
+      (input.twosWinnersText?.trim()
+        ? `\n\n${input.twosWinnersText}`
+        : "")
+    : input.rawText;
+
   const base = buildMensImportPreview({
-    rawText: input.rawText,
+    rawText: combinedRawText,
     entrants: input.entrants,
     entryFee: input.entryFee,
     divisionCount: input.divisionCount,
