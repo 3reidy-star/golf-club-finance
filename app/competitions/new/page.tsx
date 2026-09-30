@@ -18,6 +18,9 @@ export default function NewCompetitionPage() {
   const [entrants, setEntrants] = useState("");
   const [entryFee, setEntryFee] = useState("5");
   const [intelligentGolfText, setIntelligentGolfText] = useState("");
+  const [divisionTexts, setDivisionTexts] = useState(["", "", ""]);
+  const [twosPaidText, setTwosPaidText] = useState("");
+  const [twosWinnersText, setTwosWinnersText] = useState("");
   const [twosEntrants, setTwosEntrants] = useState("");
   const [twosWinnersPresent, setTwosWinnersPresent] = useState<"" | "yes" | "no">("");
   const [notes, setNotes] = useState("");
@@ -27,10 +30,13 @@ export default function NewCompetitionPage() {
   const smallCompetition = entrantCount > 0 && entrantCount < 10;
 
   const preview = useMemo(() => {
-    if (!intelligentGolfText.trim()) return null;
+    if (!divisionTexts[0]?.trim()) return null;
 
     return buildMensCompetitionPreview({
       rawText: intelligentGolfText,
+      divisionTexts: divisionTexts.slice(0, divisionCount),
+      twosPaidText,
+      twosWinnersText,
       entrants: entrantCount,
       entryFee: Number(entryFee) || 5,
       divisionCount,
@@ -43,6 +49,9 @@ export default function NewCompetitionPage() {
     });
   }, [
     intelligentGolfText,
+    divisionTexts,
+    twosPaidText,
+    twosWinnersText,
     entrantCount,
     entryFee,
     divisionCount,
@@ -73,6 +82,9 @@ export default function NewCompetitionPage() {
           entrants: entrantCount,
           entryFee: Number(entryFee),
           intelligentGolfText,
+          divisionTexts: divisionTexts.slice(0, divisionCount),
+          twosPaidText,
+          twosWinnersText,
           divisionCount,
           twosEntrantsOverride: smallCompetition ? Number(twosEntrants || 0) : null,
           twosWinnersPresent: smallCompetition ? twosWinnersPresent === "yes" : null,
@@ -224,16 +236,35 @@ export default function NewCompetitionPage() {
               </section>
             )}
 
-            {mode === "import" && <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">Paste from Intelligent Golf</h2>
-              <textarea
-                value={intelligentGolfText}
-                onChange={(e) => setIntelligentGolfText(e.target.value)}
-                rows={20}
-                placeholder="Paste Intelligent Golf information here..."
-                className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-3 font-mono text-sm text-slate-900"
-              />
-            </section>}
+            {mode === "import" && (
+              <div className="space-y-6">
+                {Array.from({ length: divisionCount }, (_, index) => (
+                  <section key={index} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                    <h2 className="text-lg font-semibold text-slate-900">Division {index + 1} results</h2>
+                    <p className="mt-1 text-sm text-slate-500">Paste only the results table for this division.</p>
+                    <textarea
+                      value={divisionTexts[index]}
+                      onChange={(e) => setDivisionTexts((values) => values.map((value, i) => i === index ? e.target.value : value))}
+                      rows={10}
+                      placeholder={`Paste Division ${index + 1} results here...`}
+                      className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-3 font-mono text-sm text-slate-900"
+                    />
+                  </section>
+                ))}
+
+                <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-slate-900">Birdie 2s entrants</h2>
+                  <p className="mt-1 text-sm text-slate-500">Paste the list of players who paid into the 2s. Leave blank for no 2s pot.</p>
+                  <textarea value={twosPaidText} onChange={(e) => setTwosPaidText(e.target.value)} rows={7} placeholder="Paste players who paid into Birdie 2s..." className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-3 font-mono text-sm" />
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-slate-900">Birdie 2s winners</h2>
+                  <p className="mt-1 text-sm text-slate-500">Paste the Birdie 2 winner table/details. Leave blank if there were no winners.</p>
+                  <textarea value={twosWinnersText} onChange={(e) => setTwosWinnersText(e.target.value)} rows={7} placeholder="Paste Birdie 2 winners here..." className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-3 font-mono text-sm" />
+                </section>
+              </div>
+            )}
 
             {mode === "manual" && (
               <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
