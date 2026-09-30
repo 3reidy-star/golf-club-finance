@@ -395,6 +395,19 @@ export function parseIntelligentGolf(
       }
     }
 
+    // Some Intelligent Golf single-division clipboard output omits the
+    // division heading entirely. If a ranked result line is recognisable,
+    // treat it as Division 1. This also handles tab-separated browser copies
+    // where the visible "Results / Points" heading is not preserved.
+    const implicitDivisionOneResult =
+      parsePointsResultLine(line, 1);
+
+    if (implicitDivisionOneResult) {
+      currentDivision = 1;
+      divisions[1].push(implicitDivisionOneResult);
+      continue;
+    }
+
     /*
       MARKDOWN DIVISION RESULT
     */
