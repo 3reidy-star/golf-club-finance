@@ -19,6 +19,7 @@ export default function NewCompetitionPage() {
   const [entryFee, setEntryFee] = useState("5");
   const [intelligentGolfText, setIntelligentGolfText] = useState("");
   const [divisionTexts, setDivisionTexts] = useState(["", "", ""]);
+  const [grossResultsText, setGrossResultsText] = useState("");
   const [twosPaidText, setTwosPaidText] = useState("");
   const [twosWinnersText, setTwosWinnersText] = useState("");
   const [twosEntrants, setTwosEntrants] = useState("");
@@ -35,6 +36,7 @@ export default function NewCompetitionPage() {
     return buildMensCompetitionPreview({
       rawText: intelligentGolfText,
       divisionTexts: divisionTexts.slice(0, divisionCount),
+      grossResultsText,
       twosPaidText,
       twosWinnersText,
       entrants: entrantCount,
@@ -50,6 +52,7 @@ export default function NewCompetitionPage() {
   }, [
     intelligentGolfText,
     divisionTexts,
+    grossResultsText,
     twosPaidText,
     twosWinnersText,
     entrantCount,
@@ -83,6 +86,7 @@ export default function NewCompetitionPage() {
           entryFee: Number(entryFee),
           intelligentGolfText,
           divisionTexts: divisionTexts.slice(0, divisionCount),
+          grossResultsText,
           twosPaidText,
           twosWinnersText,
           divisionCount,
@@ -251,6 +255,12 @@ export default function NewCompetitionPage() {
                     />
                   </section>
                 ))}
+
+                <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <h2 className="text-lg font-semibold text-slate-900">Gross results</h2>
+                  <p className="mt-1 text-sm text-slate-500">Paste the Gross results table from Intelligent Golf. Leave blank if this competition has no Gross prize.</p>
+                  <textarea value={grossResultsText} onChange={(e) => setGrossResultsText(e.target.value)} rows={7} placeholder="Paste Gross results here..." className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-3 font-mono text-sm" />
+                </section>
 
                 <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <h2 className="text-lg font-semibold text-slate-900">Birdie 2s entrants</h2>
