@@ -92,9 +92,9 @@ export function buildMensCompetitionPreview(input: {
     };
   }
 
-  if (!useManualTwos) return base;
-
-  const twosEntrants = Math.max(0, Number(input.twosEntrantsOverride ?? 0));
+  const twosEntrants = useManualTwos
+    ? Math.max(0, Number(input.twosEntrantsOverride ?? 0))
+    : base.importData.twosPaidPlayers.length;
   const twosWinnerCount = input.twosWinnersPresent === false ? 0 : base.importData.twosWinners.length;
 
   const calculation = calculateMensCompetition({
