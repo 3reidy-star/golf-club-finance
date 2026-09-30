@@ -22,14 +22,10 @@ export default function NewCompetitionPage() {
   const [grossResultsText, setGrossResultsText] = useState("");
   const [twosPaidText, setTwosPaidText] = useState("");
   const [twosWinnersText, setTwosWinnersText] = useState("");
-  const [twosEntrants, setTwosEntrants] = useState("");
-  const [twosWinnersPresent, setTwosWinnersPresent] = useState<"" | "yes" | "no">("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const entrantCount = Number(entrants) || 0;
-  const smallCompetition = entrantCount > 0 && entrantCount < 10;
-
   const preview = useMemo(() => {
     if (!divisionTexts[0]?.trim()) return null;
 
@@ -54,9 +50,6 @@ export default function NewCompetitionPage() {
     entrantCount,
     entryFee,
     divisionCount,
-    smallCompetition,
-    twosEntrants,
-    twosWinnersPresent,
   ]);
 
   useEffect(() => {
@@ -184,52 +177,7 @@ export default function NewCompetitionPage() {
               </div>
             </section>
 
-            {false && (
-              <section className="rounded-xl border border-blue-200 bg-blue-50 p-6 shadow-sm">
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
-                  Fewer than 10 players
-                </p>
-                <h2 className="mt-1 text-lg font-semibold text-slate-900">
-                  Single division & Birdie 2s
-                </h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  This competition uses one division. Enter the Birdie 2s details manually.
-                </p>
 
-                <div className="mt-5 space-y-4">
-                  <Field label="Birdie 2s entrants">
-                    <input
-                      type="number"
-                      min="0"
-                      value={twosEntrants}
-                      onChange={(e) => setTwosEntrants(e.target.value)}
-                      placeholder="0"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"
-                    />
-                  </Field>
-
-                  <Field label="Were there any Birdie 2s winners?">
-                    <select
-                      value={twosWinnersPresent}
-                      onChange={(e) =>
-                        setTwosWinnersPresent(e.target.value as "" | "yes" | "no")
-                      }
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900"
-                    >
-                      <option value="">Select...</option>
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </select>
-                  </Field>
-
-                  {twosWinnersPresent === "yes" && (
-                    <p className="text-xs leading-5 text-slate-600">
-                      Include the Birdie 2 winner details in the Intelligent Golf paste so the correct player top-up can be created.
-                    </p>
-                  )}
-                </div>
-              </section>
-            )}
 
             {mode === "import" && (
               <div className="space-y-6">
@@ -255,7 +203,7 @@ export default function NewCompetitionPage() {
 
                 <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <h2 className="text-lg font-semibold text-slate-900">Birdie 2s entrants</h2>
-                  <p className="mt-1 text-sm text-slate-500">Paste the list of players who paid into the 2s. Leave blank for no 2s pot.</p>
+                  <p className="mt-1 text-sm font-medium text-amber-700">Paste ONLY the players who paid into the Birdie 2s. Do not paste the non-payers list. Leave blank for no 2s pot.</p>
                   <textarea value={twosPaidText} onChange={(e) => setTwosPaidText(e.target.value)} rows={7} placeholder="Paste players who paid into Birdie 2s..." className="mt-4 w-full rounded-lg border border-slate-300 px-3 py-3 font-mono text-sm" />
                 </section>
 
@@ -317,6 +265,17 @@ export default function NewCompetitionPage() {
                     <p className="font-semibold text-red-900">Import needs attention</p>
                     <ul className="mt-3 space-y-2 text-sm text-red-700">
                       {preview.errors.map((message, index) => (
+                        <li key={index}>• {message}</li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {preview.warnings.length > 0 && (
+                  <section className="rounded-xl border border-amber-200 bg-amber-50 p-5">
+                    <p className="font-semibold text-amber-900">Import warnings</p>
+                    <ul className="mt-3 space-y-2 text-sm text-amber-800">
+                      {preview.warnings.map((message, index) => (
                         <li key={index}>• {message}</li>
                       ))}
                     </ul>
