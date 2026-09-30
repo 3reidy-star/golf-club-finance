@@ -50,71 +50,34 @@ export function buildMensCompetitionPreview(input: {
     base.importData.twosPaidPlayers = Array.from(new Set(paidPlayers));
   }
 
-  const useManualTwos = input.twosEntrantsOverride !== null && input.twosEntrantsOverride !== undefined;
-  const hasImportedTwos = base.importData.twosPaidPlayers.length > 0;
+  const paidPlayers = input.twosPaidText !== undefined
+    ? Array.from(new Set(
+        input.twosPaidText
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter((line) => line && !line.startsWith("#") && !/^\*?the following players/i.test(line))
+          .map((line) => line.replace(/^[-*•]\s*/, "").trim())
+          .filter(Boolean),
+      ))
+    : base.importData.twosPaidPlayers;
 
-  // If no Birdie 2s paid-player list was pasted, do not infer a 2s pot from
-  // winners or other competition text. Treat it as zero unless the user has
-  // explicitly entered a manual 2s entrant count.
-  if (!useManualTwos && !hasImportedTwos) {
-    const calculation = calculateMensCompetition({
-      entrants: input.entrants,
-      entryFee: input.entryFee,
-      twosEntrants: 0,
-      twosEntryFee: base.importData.twosEntryFee,
-      twosWinners: 0,
-      feeRate: 0.04,
-    });
+  base.importData.twosPaidPlayers = paidPlayers;
 
-    const errors = base.errors.filter(
-      (message) =>
-        !message.includes("Birdie 2s winners were found") &&
-        !message.includes("is shown as a Birdie 2 winner but is not in the list of players who paid"),
-    );
+  const twosEntrants = paidPlayers.length;
+  const twosWinners = base.importData.twosWinners.filter((winner) =>
+    paidPlayers.some((name) => name.toLowerCase() === winner.playerName.toLowerCase()),
+  );
 
-    const playerPayouts = base.playerPayouts
-      .map((player) => ({
-        ...player,
-        awards: player.awards.filter((award) => !award.description.startsWith("Birdie 2")),
-      }))
-      .map((player) => ({
-        ...player,
-        amount: roundMoney(player.awards.reduce((total, award) => total + award.amount, 0)),
-      }))
-      .filter((player) => player.amount > 0);
-
-    return {
-      ...base,
-      calculation,
-      playerPayouts,
-      sectionPayment: calculation.netSectionTopUp,
-      errors,
-    };
-  }
-
-  const twosEntrants = useManualTwos
-    ? Math.max(0, Number(input.twosEntrantsOverride ?? 0))
-    : base.importData.twosPaidPlayers.length;
-  const twosWinnerCount = input.twosWinnersPresent === false ? 0 : base.importData.twosWinners.length;
+  base.importData.twosWinners = twosWinners;
 
   const calculation = calculateMensCompetition({
     entrants: input.entrants,
     entryFee: input.entryFee,
     twosEntrants,
-    twosEntryFee: base.importData.twosEntryFee,
-    twosWinners: twosWinnerCount,
+    twosEntryFee: 1,
+    twosWinners: twosWinners.length,
     feeRate: 0.04,
   });
-
-  const errors = base.errors.filter(
-    (message) =>
-      !message.includes("Birdie 2s winners were found") &&
-      !message.includes("is shown as a Birdie 2 winner but is not in the list of players who paid"),
-  );
-
-  if (input.twosWinnersPresent === true && base.importData.twosWinners.length === 0) {
-    errors.push("You selected that there were Birdie 2s winners, but no winner was recognised in the pasted Intelligent Golf information.");
-  }
 
   const playerMap = new Map(
     base.playerPayouts.map((player) => [
@@ -131,28 +94,33 @@ export function buildMensCompetitionPreview(input: {
     if (player.amount === 0) playerMap.delete(key);
   }
 
-  if (input.twosWinnersPresent !== false && twosWinnerCount > 0) {
-    for (const winner of base.importData.twosWinners) {
-      const key = winner.playerName.toLowerCase();
-      const existing = playerMap.get(key) ?? {
-        playerName: winner.playerName,
-        amount: 0,
-        awards: [],
-      };
-      const amount = calculation.twosIndividualPayout;
-      existing.awards.push({
-        description: winner.hole ? `Birdie 2 (${winner.hole})` : "Birdie 2",
-        amount,
-      });
-      existing.amount = roundMoney(existing.amount + amount);
-      playerMap.set(key, existing);
-    }
+  for (const winner of twosWinners) {
+    const key = winner.playerName.toLowerCase();
+    const existing = playerMap.get(key) ?? {
+      playerName: winner.playerName,
+      amount: 0,
+      awards: [],
+    };
+    existing.awards.push({
+      description: winner.hole ? `Birdie 2 (${winner.hole})` : "Birdie 2",
+      amount: calculation.twosIndividualPayout,
+    });
+    existing.amount = roundMoney(existing.amount + calculation.twosIndividualPayout);
+    playerMap.set(key, existing);
   }
+
+  const errors = base.errors.filter(
+    (message) =>
+      !message.includes("Birdie 2s winners were found") &&
+      !message.includes("is shown as a Birdie 2 winner but is not in the list of players who paid"),
+  );
 
   return {
     ...base,
     calculation,
-    playerPayouts: Array.from(playerMap.values()).sort((a, b) => a.playerName.localeCompare(b.playerName)),
+    playerPayouts: Array.from(playerMap.values()).sort((a, b) =>
+      a.playerName.localeCompare(b.playerName),
+    ),
     sectionPayment: calculation.netSectionTopUp,
     errors,
   };
