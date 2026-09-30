@@ -77,6 +77,7 @@ export function buildMensCompetitionPreview(input: {
     twosEntryFee: 1,
     twosWinners: twosWinners.length,
     feeRate: 0.04,
+    divisionCount: input.divisionCount,
   });
 
   const playerMap = new Map(
