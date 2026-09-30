@@ -90,6 +90,7 @@ export type MensCompetitionInput = {
   twosEntryFee?: number;
   twosWinners?: number;
   feeRate?: number;
+  divisionCount?: 1 | 2 | 3;
 };
 
 export function calculateMensCompetition(
@@ -147,149 +148,38 @@ export function calculateMensCompetition(
   );
 
   const prizes: PrizeLine[] = [];
+  const divisionCount = input.divisionCount ?? (
+    entrants <= 20 ? 1 : entrants < 75 ? 2 : 3
+  );
 
-  if (entrants <= 10) {
-    const [first, second] = splitPrizePot(
-      prizeFund,
-      [0.7, 0.3],
-    );
-
+  if (entrants <= 10 && divisionCount === 1) {
+    const [first, second] = splitPrizePot(prizeFund, [0.7, 0.3]);
     prizes.push(
-      {
-        key: "division-1-1",
-        division: "Division 1",
-        place: "1st",
-        amount: first,
-      },
-      {
-        key: "division-1-2",
-        division: "Division 1",
-        place: "2nd",
-        amount: second,
-      },
+      { key: "division-1-1", division: "Division 1", place: "1st", amount: first },
+      { key: "division-1-2", division: "Division 1", place: "2nd", amount: second },
     );
-  } else if (entrants <= 20) {
-    const divisionPot = roundMoney(
-      prizeFund - 10,
-    );
-
-    const [first, second, third] =
-      splitPrizePot(
-        divisionPot,
-        [0.55, 0.3, 0.15],
-      );
-
-    prizes.push(
-      {
-        key: "gross-1",
-        division: "Gross",
-        place: "1st",
-        amount: 10,
-      },
-      {
-        key: "division-1-1",
-        division: "Division 1",
-        place: "1st",
-        amount: first,
-      },
-      {
-        key: "division-1-2",
-        division: "Division 1",
-        place: "2nd",
-        amount: second,
-      },
-      {
-        key: "division-1-3",
-        division: "Division 1",
-        place: "3rd",
-        amount: third,
-      },
-    );
-  } else if (entrants < 75) {
-    const remainingPrizePence =
-      toPence(prizeFund - 10);
-
-    const divisionPots = splitPence(
-      remainingPrizePence,
-      2,
-    ).map(fromPence);
-
-    prizes.push({
-      key: "gross-1",
-      division: "Gross",
-      place: "1st",
-      amount: 10,
-    });
-
-    divisionPots.forEach((pot, index) => {
-      const divisionNumber = index + 1;
-
-      const [first, second, third] =
-        splitPrizePot(
-          pot,
-          [0.55, 0.3, 0.15],
-        );
-
-      prizes.push(
-        {
-          key: `division-${divisionNumber}-1`,
-          division: `Division ${divisionNumber}`,
-          place: "1st",
-          amount: first,
-        },
-        {
-          key: `division-${divisionNumber}-2`,
-          division: `Division ${divisionNumber}`,
-          place: "2nd",
-          amount: second,
-        },
-        {
-          key: `division-${divisionNumber}-3`,
-          division: `Division ${divisionNumber}`,
-          place: "3rd",
-          amount: third,
-        },
-      );
-    });
   } else {
-    const remainingPrizePence =
-      toPence(prizeFund - 10);
+    const grossPrize = entrants > 10 ? 10 : 0;
+    const remainingPrizePence = toPence(prizeFund - grossPrize);
+    const divisionPots = splitPence(remainingPrizePence, divisionCount).map(fromPence);
 
-    const divisionPots = splitPence(
-      remainingPrizePence,
-      3,
-    ).map(fromPence);
-
-    prizes.push({
-      key: "gross-1",
-      division: "Gross",
-      place: "1st",
-      amount: 10,
-    });
+    if (grossPrize > 0) {
+      prizes.push({ key: "gross-1", division: "Gross", place: "1st", amount: grossPrize });
+    }
 
     divisionPots.forEach((pot, index) => {
       const divisionNumber = index + 1;
+      const percentages = divisionCount === 3 && entrants >= 75 ? [0.7, 0.3] : [0.55, 0.3, 0.15];
+      const amounts = splitPrizePot(pot, percentages);
 
-      const [first, second] =
-        splitPrizePot(
-          pot,
-          [0.7, 0.3],
-        );
-
-      prizes.push(
-        {
-          key: `division-${divisionNumber}-1`,
+      amounts.forEach((amount, placeIndex) => {
+        prizes.push({
+          key: `division-${divisionNumber}-${placeIndex + 1}`,
           division: `Division ${divisionNumber}`,
-          place: "1st",
-          amount: first,
-        },
-        {
-          key: `division-${divisionNumber}-2`,
-          division: `Division ${divisionNumber}`,
-          place: "2nd",
-          amount: second,
-        },
-      );
+          place: ["1st", "2nd", "3rd"][placeIndex],
+          amount,
+        });
+      });
     });
   }
 
