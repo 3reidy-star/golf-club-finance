@@ -349,6 +349,70 @@ export default function NewCompetitionPage() {
                 </section>
 
                 <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-900">WhatsApp Summary</h2>
+                      <p className="mt-1 text-sm text-slate-500">Copy this straight into the Men's Section WhatsApp group.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const divisionLines = preview.calculation.prizes
+                          .filter((prize) => prize.division !== "Gross")
+                          .map((prize) => {
+                            const division = Number(prize.division.match(/(\d+)/)?.[1] ?? 1);
+                            const result = preview.importData.divisions[division]?.find(
+                              (player) => player.place.toLowerCase() === prize.place.toLowerCase(),
+                            );
+                            return result ? `${prize.place} – ${result.playerName} – £${prize.amount.toFixed(2)}` : null;
+                          })
+                          .filter(Boolean);
+
+                        const grossPrize = preview.calculation.prizes.find((prize) => prize.division === "Gross");
+                        const grossLine = grossPrize && preview.grossWinner
+                          ? `🏆 Gross Winner\n${preview.grossWinner.playerName} – £${grossPrize.amount.toFixed(2)}`
+                          : "";
+
+                        const twosLines = preview.importData.twosWinners.length
+                          ? `🎯 Birdie 2s\n${preview.importData.twosWinners
+                              .map((winner) => `${winner.playerName} – £${preview.calculation.twosIndividualPayout.toFixed(2)}`)
+                              .join("\n")}`
+                          : "";
+
+                        const message = [
+                          `⛳ Men's Competition Payout – ${name || "Competition"}`,
+                          competitionDate ? new Date(`${competitionDate}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "",
+                          "",
+                          "🏆 Results",
+                          ...divisionLines,
+                          grossLine ? "" : null,
+                          grossLine || null,
+                          twosLines ? "" : null,
+                          twosLines || null,
+                          "",
+                          `💰 Men's Section – £${preview.sectionPayment.toFixed(2)}`,
+                          "",
+                          "Payouts submitted for processing.",
+                        ].filter((line) => line !== null).join("\n");
+
+                        navigator.clipboard.writeText(message);
+                      }}
+                      className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <div className="mt-4 whitespace-pre-wrap rounded-lg bg-slate-50 p-4 text-sm leading-6 text-slate-800">
+                    {[
+                      `⛳ Men's Competition Payout – ${name || "Competition"}`,
+                      competitionDate ? new Date(`${competitionDate}T12:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) : "",
+                      "",
+                      "The Copy button creates a WhatsApp-ready summary of the calculated winners, Gross winner, Birdie 2 winners and Men's Section payment.",
+                    ].join("\n")}
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                   <h2 className="text-lg font-semibold text-slate-900">Competition Summary</h2>
                   <div className="mt-5 space-y-3">
                     <MoneyRow label="Competition income" value={preview.calculation.competitionIncome} />
