@@ -143,6 +143,8 @@ export default async function AccountsSummaryPage({
           </form>
         </section>
 
+        <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5"><h2 className="text-lg font-bold text-emerald-950">AGM annual accounts PDFs</h2><p className="mt-1 text-sm text-emerald-900">The 2026 AGM year runs from 1 November 2025 to 31 October 2026. Each export uses its own account transactions and category totals.</p><div className="mt-4 flex flex-wrap gap-3"><a href="/accounts/annual-pdf?account=MENS&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s 2026 PDF</a><a href="/accounts/annual-pdf?account=CLUB&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club 2026 PDF</a></div></section>
+
         {allTransactions.length === 0 ? (
           <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-6">
             <h2 className="text-lg font-semibold text-amber-900">No transactions uploaded yet</h2>
