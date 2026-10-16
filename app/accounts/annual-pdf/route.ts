@@ -65,7 +65,7 @@ export async function GET(request:Request) {
  const room=(height:number)=>{if(y-height<76)next();};
  const row=(name:string,amount:number,index:number,strong=false)=>{
    room(26);
-   if(index%2===1)page.drawRectangle({x:64,y:y-21,width:W-128,height:25,color:pale});
+   if(index%2===1)page.drawRectangle({x:48,y:y-21,width:W-96,height:25,color:pale});
    label(name.slice(0,64),70,y-14,9,strong,strong?green:ink);
    right(money(amount),y-14,9,strong,strong?green:ink);
    y-=26;
