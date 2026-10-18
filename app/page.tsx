@@ -86,6 +86,12 @@ export default async function Home() {
             outstanding: unreconciledCount,
           },
           {
+            title: "Invoices",
+            description: "Create customer invoices, download PDFs and allocate bank receipts.",
+            href: "/invoices",
+            outstanding: 0,
+          },
+          {
             title: "Annual Accounts",
             description: "Financial-year income, expenditure and category summary for AGM reporting.",
             href: "/accounts/summary",

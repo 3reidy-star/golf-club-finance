@@ -20,7 +20,7 @@ export default auth((request) => {
   }
 
   /* Accounts contain private club financial information: Treasurer only. */
-  if (pathname === "/accounts" || pathname.startsWith("/accounts/")) {
+  if (pathname === "/accounts" || pathname.startsWith("/accounts/") || pathname === "/invoices" || pathname.startsWith("/invoices/")) {
     if (role === "TREASURER") return NextResponse.next();
     return NextResponse.redirect(new URL("/", request.nextUrl));
   }

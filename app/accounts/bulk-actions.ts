@@ -22,13 +22,15 @@ export async function saveTransactionCategories(formData: FormData) {
   const swapTransactionId = String(formData.get("swapTransactionId") ?? "");
 
   if (swapTransactionId) {
-    const transaction = await prisma.accountTransaction.findUnique({ where: { id: swapTransactionId }, select: { credit: true, debit: true } });
-    if (!transaction) throw new Error("Transaction not found.");
-    const credit = Number(transaction.credit);
-    const debit = Number(transaction.debit);
-    if (credit > 0 && debit === 0) await prisma.accountTransaction.update({ where: { id: swapTransactionId }, data: { credit: 0, debit: credit } });
-    else if (debit > 0 && credit === 0) await prisma.accountTransaction.update({ where: { id: swapTransactionId }, data: { credit: debit, debit: 0 } });
-    else throw new Error("This transaction cannot be swapped automatically.");
+    await prisma.$transaction(async (tx) => {
+      const transaction = await tx.accountTransaction.findUnique({ where: { id: swapTransactionId }, include: { invoicePayments: { where: { removedAt: null } } } });
+      if (!transaction) throw new Error("Transaction not found.");
+      if (transaction.invoicePayments.length) throw new Error("Remove this receipt's invoice allocations before swapping money in/out.");
+      const credit = Number(transaction.credit), debit = Number(transaction.debit);
+      if (credit > 0 && debit === 0) await tx.accountTransaction.update({ where: { id: swapTransactionId }, data: { credit: 0, debit: credit } });
+      else if (debit > 0 && credit === 0) await tx.accountTransaction.update({ where: { id: swapTransactionId }, data: { credit: debit, debit: 0 } });
+      else throw new Error("This transaction cannot be swapped automatically.");
+    }, { isolationLevel: "Serializable" });
     revalidatePath("/accounts", "page");
     revalidatePath("/accounts/summary", "page");
     redirect(returnTo);
@@ -47,11 +49,16 @@ export async function saveTransactionCategories(formData: FormData) {
     if (id && !deleteIdSet.has(id) && ACCOUNT_CATEGORIES.includes(category as (typeof ACCOUNT_CATEGORIES)[number])) categoryUpdates.push({ id, category });
   }
 
-  await prisma.$transaction([
-    ...categoryUpdates.map((update) => prisma.accountTransaction.update({ where: { id: update.id }, data: { category: update.category } })),
-    ...visibleIds.filter((id) => !deleteIdSet.has(id)).map((id) => prisma.accountTransaction.update({ where: { id }, data: { reconciled: reconciledIds.has(id) } })),
-    ...(deleteIds.length ? [prisma.accountTransaction.deleteMany({ where: { id: { in: deleteIds } } })] : []),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    if (deleteIds.length && await tx.invoicePayment.count({ where: { transactionId: { in: deleteIds } } })) {
+      throw new Error("A selected transaction has invoice payment history and cannot be deleted. Keep it for the audit trail.");
+    }
+    await Promise.all([
+      ...categoryUpdates.map((update) => tx.accountTransaction.update({ where: { id: update.id }, data: { category: update.category } })),
+      ...visibleIds.filter((id) => !deleteIdSet.has(id)).map((id) => tx.accountTransaction.update({ where: { id }, data: { reconciled: reconciledIds.has(id) } })),
+      ...(deleteIds.length ? [tx.accountTransaction.deleteMany({ where: { id: { in: deleteIds } } })] : []),
+    ]);
+  }, { isolationLevel: "Serializable" });
 
   revalidatePath("/accounts", "page");
   revalidatePath("/accounts/summary", "page");

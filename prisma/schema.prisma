@@ -68,8 +68,10 @@ model User {
   approved  PayoutRequest[] @relation("PayoutApprovedBy")
   paid      PayoutRequest[] @relation("PayoutPaidBy")
 
-  competitions Competition[] @relation("CompetitionCreatedBy")
-  accountImports AccountImportBatch[]
+  competitions    Competition[]        @relation("CompetitionCreatedBy")
+  accountImports  AccountImportBatch[]
+  invoices        Invoice[]
+  invoicePayments InvoicePayment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -240,6 +242,7 @@ model FinanceAccount {
   openingBalance Decimal     @db.Decimal(12, 2)
 
   transactions AccountTransaction[]
+  invoices     Invoice[]
   imports      AccountImportBatch[]
 
   createdAt DateTime @default(now())
@@ -247,14 +250,14 @@ model FinanceAccount {
 }
 
 model AccountImportBatch {
-  id           String      @id @default(cuid())
+  id           String         @id @default(cuid())
   accountCode  AccountCode
   account      FinanceAccount @relation(fields: [accountCode], references: [code])
   fileName     String
   rowCount     Int
   importedById String
-  importedBy   User        @relation(fields: [importedById], references: [id])
-  importedAt   DateTime    @default(now())
+  importedBy   User           @relation(fields: [importedById], references: [id])
+  importedAt   DateTime       @default(now())
 
   transactions AccountTransaction[]
 
@@ -262,18 +265,19 @@ model AccountImportBatch {
 }
 
 model AccountTransaction {
-  id              String      @id @default(cuid())
+  id              String              @id @default(cuid())
   accountCode     AccountCode
-  account         FinanceAccount @relation(fields: [accountCode], references: [code])
+  account         FinanceAccount      @relation(fields: [accountCode], references: [code])
   transactionDate DateTime
   description     String
-  credit          Decimal     @default(0) @db.Decimal(12, 2)
-  debit           Decimal     @default(0) @db.Decimal(12, 2)
-  category         String
-  reconciled       Boolean     @default(false)
-  sourceKey        String      @unique
-  importBatchId    String?
-  importBatch      AccountImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  credit          Decimal             @default(0) @db.Decimal(12, 2)
+  debit           Decimal             @default(0) @db.Decimal(12, 2)
+  category        String
+  reconciled      Boolean             @default(false)
+  invoicePayments InvoicePayment[]
+  sourceKey       String              @unique
+  importBatchId   String?
+  importBatch     AccountImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -283,29 +287,28 @@ model AccountTransaction {
   @@index([accountCode, reconciled])
 }
 
-
 model WinterLeaguePlayer {
-  id        String   @id @default(cuid())
+  id        String               @id @default(cuid())
   name      String
-  nameKey   String   @unique
-  active    Boolean  @default(true)
+  nameKey   String               @unique
+  active    Boolean              @default(true)
   results   WinterLeagueResult[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 }
 
 model WinterLeagueRound {
-  id        String   @id @default(cuid())
-  roundNo   Int      @unique
+  id        String               @id @default(cuid())
+  roundNo   Int                  @unique
   name      String?
   playedAt  DateTime?
   results   WinterLeagueResult[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
 }
 
 model WinterLeagueResult {
-  id        String   @id @default(cuid())
+  id        String             @id @default(cuid())
   roundId   String
   playerId  String
   position  Int
@@ -313,9 +316,82 @@ model WinterLeagueResult {
   points    Int
   round     WinterLeagueRound  @relation(fields: [roundId], references: [id], onDelete: Cascade)
   player    WinterLeaguePlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
 
   @@unique([roundId, playerId])
   @@index([playerId])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  VOID
+}
+
+model Invoice {
+  id                  String           @id @default(cuid())
+  number              String?          @unique
+  accountCode         AccountCode
+  account             FinanceAccount   @relation(fields: [accountCode], references: [code])
+  status              InvoiceStatus    @default(DRAFT)
+  customerName        String
+  customerAddress     String
+  customerEmail       String
+  reference           String
+  issuerName          String
+  issuerAddress       String
+  issuerEmail         String
+  paymentInstructions String
+  invoiceDate         DateTime
+  dueDate             DateTime
+  notes               String
+  totalPence          Int
+  createdById         String
+  createdBy           User             @relation(fields: [createdById], references: [id])
+  issuedAt            DateTime?
+  voidedAt            DateTime?
+  voidReason          String?
+  lines               InvoiceLine[]
+  payments            InvoicePayment[]
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  @@index([accountCode, status, invoiceDate])
+}
+
+model InvoiceLine {
+  id             String  @id @default(cuid())
+  invoiceId      String
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  position       Int
+  description    String
+  quantity       Decimal @db.Decimal(10, 2)
+  unitPricePence Int
+  totalPence     Int
+
+  @@index([invoiceId, position])
+}
+
+model InvoiceSequence {
+  key   String @id
+  value Int    @default(0)
+}
+
+model InvoicePayment {
+  id            String             @id @default(cuid())
+  invoiceId     String
+  invoice       Invoice            @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  transactionId String
+  transaction   AccountTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  amountPence   Int
+  recordedById  String
+  recordedBy    User               @relation(fields: [recordedById], references: [id])
+  createdAt     DateTime           @default(now())
+  removedAt     DateTime?
+  removedById   String?
+  removalReason String?
+
+  @@index([invoiceId, removedAt])
+  @@index([transactionId, removedAt])
 }
