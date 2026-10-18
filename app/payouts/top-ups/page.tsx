@@ -1,3 +1,5 @@
+import Link from "next/link";
+import MensTopUpShare from "./MensTopUpShare";
 import { PayoutStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -41,15 +43,29 @@ export default async function TopUpsPage() {
       },
     });
 
+  const mensPlayers = new Map<string, { name: string; amountPence: number }>();
+  for (const payout of payouts) {
+    if (payout.section.code !== "MENS") continue;
+    for (const topUp of payout.topUps) {
+      if (topUp.completed) continue;
+      const name = topUp.recipientName.trim();
+      const key = name.toLocaleLowerCase("en-GB");
+      const existing = mensPlayers.get(key);
+      const amountPence = Math.round(Number(topUp.amount) * 100);
+      if (existing) existing.amountPence += amountPence;
+      else mensPlayers.set(key, { name, amountPence });
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
       <div className="mx-auto max-w-6xl">
-        <a
+        <Link
           href="/"
           className="mb-5 inline-block text-sm font-medium text-slate-600 hover:text-slate-900"
         >
           ← Dashboard
-        </a>
+        </Link>
 
         <div className="mb-8">
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -66,6 +82,8 @@ export default async function TopUpsPage() {
             approval.
           </p>
         </div>
+
+        <MensTopUpShare players={Array.from(mensPlayers.values()).sort((a, b) => a.name.localeCompare(b.name, "en-GB"))} />
 
         {payouts.length === 0 ? (
           <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
