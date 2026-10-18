@@ -169,6 +169,8 @@ model PayoutTopUp {
 
   completed   Boolean   @default(false)
   completedAt DateTime?
+  sectionPaymentBatchId String?
+  sectionPaymentReference String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
