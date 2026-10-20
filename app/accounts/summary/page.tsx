@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ACCOUNT_CATEGORIES } from "../categories";
+import { getAccountCategories } from "@/lib/account-categories";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +28,7 @@ export default async function AccountsSummaryPage({
   if (session.user.role !== "TREASURER") redirect("/");
 
   const params = await searchParams;
+  const categories = await getAccountCategories();
   const requestedYear = Number(params.year);
   const currentYear = new Date().getUTCFullYear();
   const year = Number.isFinite(requestedYear) && requestedYear >= 2000 && requestedYear <= 2100
@@ -74,7 +75,7 @@ export default async function AccountsSummaryPage({
     return total + Number(account.openingBalance) + priorMovement;
   }, 0);
 
-  const categoryRows = ACCOUNT_CATEGORIES.map((category) => {
+  const categoryRows = categories.map((category) => {
     const rows = yearTransactions.filter((row) => row.category === category);
     const credit = rows.reduce((total, row) => total + Number(row.credit), 0);
     const debit = rows.reduce((total, row) => total + Number(row.debit), 0);

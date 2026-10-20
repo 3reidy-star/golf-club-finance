@@ -397,3 +397,10 @@ model InvoicePayment {
   @@index([invoiceId, removedAt])
   @@index([transactionId, removedAt])
 }
+
+model AccountCategory {
+  id String @id @default(cuid())
+  name String
+  nameKey String @unique
+  createdAt DateTime @default(now())
+}

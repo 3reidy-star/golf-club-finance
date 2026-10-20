@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ACCOUNT_CATEGORIES } from "./categories";
+import { getAccountCategories } from "@/lib/account-categories";
 
 async function requireTreasurer() {
   const session = await auth();
@@ -202,7 +202,7 @@ function buildLloydsRows(text: string, accountCode: "CLUB" | "MENS") {
   return rows;
 }
 
-function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
+function buildParsedRows(text: string, accountCode: "CLUB" | "MENS", categories: string[]) {
   const lloydsRows = buildLloydsRows(text, accountCode);
   if (lloydsRows.length > 0) return lloydsRows;
 
@@ -243,7 +243,7 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS") {
     if (credit === 0 && debit === 0) continue;
 
     const suppliedCategory = categoryIndex >= 0 ? values[categoryIndex]?.trim() : "";
-    const category = suppliedCategory && ACCOUNT_CATEGORIES.includes(suppliedCategory as (typeof ACCOUNT_CATEGORIES)[number])
+    const category = suppliedCategory && categories.includes(suppliedCategory)
       ? suppliedCategory
       : inferCategory(description, accountCode);
     const reference = referenceIndex >= 0 ? values[referenceIndex]?.trim() : "";
@@ -268,6 +268,7 @@ async function applySmartCategoriesToExisting() {
   await prisma.accountTransaction.updateMany({
     where: {
       accountCode: "CLUB",
+      category: "Uncategorised",
       OR: [
         { description: { contains: "charge", mode: "insensitive" } },
         { description: { contains: "bank fee", mode: "insensitive" } },
@@ -279,7 +280,7 @@ async function applySmartCategoriesToExisting() {
   await prisma.accountTransaction.updateMany({
     where: {
       accountCode: "CLUB",
-      category: { not: "Charges" },
+      category: "Uncategorised",
     },
     data: { category: "Competition Fees" },
   });
@@ -346,7 +347,7 @@ export async function importTransactions(_previousState: ImportState, formData: 
   if (!file.name.toLowerCase().endsWith(".csv")) return { error: "Please export the transaction list as CSV before uploading." };
 
   try {
-    return await saveImportedRows({ accountCode, fileName: file.name, rows: buildParsedRows(await file.text(), accountCode), userId: user.id });
+    return await saveImportedRows({ accountCode, fileName: file.name, rows: buildParsedRows(await file.text(), accountCode, await getAccountCategories()), userId: user.id });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Unable to read the CSV." };
   }
@@ -364,7 +365,7 @@ export async function importPastedTransactions(_previousState: ImportState, form
     return await saveImportedRows({
       accountCode,
       fileName: `Pasted Lloyds transactions ${new Date().toISOString().slice(0, 10)}`,
-      rows: buildParsedRows(pastedData, accountCode),
+      rows: buildParsedRows(pastedData, accountCode, await getAccountCategories()),
       userId: user.id,
     });
   } catch (error) {
@@ -374,12 +375,13 @@ export async function importPastedTransactions(_previousState: ImportState, form
 
 export async function updateTransactionCategory(formData: FormData) {
   await requireTreasurer();
+  const categories = await getAccountCategories();
   const id = String(formData.get("id") ?? "");
   const category = String(formData.get("category") ?? "");
   const returnToRaw = String(formData.get("returnTo") ?? "/accounts");
   const returnTo = returnToRaw.startsWith("/accounts") && !returnToRaw.startsWith("//") ? returnToRaw : "/accounts";
 
-  if (!id || !ACCOUNT_CATEGORIES.includes(category as (typeof ACCOUNT_CATEGORIES)[number])) {
+  if (!id || !categories.includes(category)) {
     throw new Error("Invalid category update.");
   }
 

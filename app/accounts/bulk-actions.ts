@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ACCOUNT_CATEGORIES } from "./categories";
+import { getAccountCategories } from "@/lib/account-categories";
 
 async function requireTreasurer() {
   const session = await auth();
@@ -19,6 +19,7 @@ function safeReturnTo(formData: FormData) {
 export async function saveTransactionCategories(formData: FormData) {
   await requireTreasurer();
   const returnTo = safeReturnTo(formData);
+  const categories = await getAccountCategories();
   const swapTransactionId = String(formData.get("swapTransactionId") ?? "");
 
   if (swapTransactionId) {
@@ -46,7 +47,7 @@ export async function saveTransactionCategories(formData: FormData) {
     if (!key.startsWith("category:")) continue;
     const id = key.slice("category:".length);
     const category = String(value);
-    if (id && !deleteIdSet.has(id) && ACCOUNT_CATEGORIES.includes(category as (typeof ACCOUNT_CATEGORIES)[number])) categoryUpdates.push({ id, category });
+    if (id && !deleteIdSet.has(id) && categories.includes(category)) categoryUpdates.push({ id, category });
   }
 
   await prisma.$transaction(async (tx) => {
