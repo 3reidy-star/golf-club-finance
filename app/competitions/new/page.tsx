@@ -12,7 +12,6 @@ export default function NewCompetitionPage() {
   const [mode, setMode] = useState<"import" | "manual">("import");
   const [divisionCount, setDivisionCount] = useState<1 | 2 | 3>(1);
   const [manualLines, setManualLines] = useState([{ playerName: "", reason: "", amount: "" }]);
-  const [manualSectionPayment, setManualSectionPayment] = useState("");
   const [name, setName] = useState("");
   const [competitionDate, setCompetitionDate] = useState("");
   const [entrants, setEntrants] = useState("");
@@ -228,7 +227,7 @@ export default function NewCompetitionPage() {
                   ))}
                 </div>
                 <button type="button" onClick={() => setManualLines((lines) => [...lines, {playerName:"",reason:"",amount:""}])} className="mt-3 rounded-lg border px-3 py-2 text-sm font-semibold">+ Add payout</button>
-                <Field label="Men's Section payment"><input type="number" step="0.01" min="0" value={manualSectionPayment} onChange={(e) => setManualSectionPayment(e.target.value)} className="w-full rounded-lg border px-3 py-2" /></Field>
+                <p className="mt-4 text-sm text-slate-600">The section payment is calculated automatically after player prizes and the 4% competition fee.</p>
               </section>
             )}
           </div>
@@ -237,10 +236,10 @@ export default function NewCompetitionPage() {
             {mode === "manual" ? (
               <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
                 <h2 className="text-lg font-semibold">Manual payout summary</h2>
-                {(() => { const income=(Number(entrants)||0)*(Number(entryFee)||0); const players=manualLines.reduce((s,l)=>s+(Number(l.amount)||0),0); const section=Number(manualSectionPayment)||0; const difference=income-players-section; return <div className="mt-5 space-y-3"><MoneyRow label="Competition income" value={income}/><MoneyRow label="Player payouts" value={players}/><MoneyRow label="Men's section payment" value={section}/><MoneyRow label="Difference" value={difference} bold/></div>; })()}
+                {(() => { const income=(Number(entrants)||0)*(Number(entryFee)||0); const players=manualLines.reduce((s,l)=>s+(Number(l.amount)||0),0); const fee=Math.round(income*0.04*100)/100; const section=Math.round((income-players-fee)*100)/100; const difference=Math.round((income-players-fee-section)*100)/100; return <div className="mt-5 space-y-3"><MoneyRow label="Competition income" value={income}/><MoneyRow label="Player payouts" value={players}/><MoneyRow label="4% competition fee" value={fee}/><MoneyRow label="Men's section payment" value={section}/><MoneyRow label="Difference" value={difference} bold/></div>; })()}
                 <Field label="Notes"><textarea value={notes} onChange={(e)=>setNotes(e.target.value)} rows={3} className="w-full rounded-lg border px-3 py-2"/></Field>
                 {error && <div className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-                <button type="button" disabled={isPending} onClick={() => { setError(null); startTransition(async()=>{ try { await createMensCompetitionManual({name,competitionDate,entrants:entrantCount,entryFee:Number(entryFee),playerPayouts:manualLines.map(l=>({playerName:l.playerName,reason:l.reason,amount:Number(l.amount)})),sectionPayment:Number(manualSectionPayment)||0,notes}); router.push("/payouts/approval"); router.refresh(); } catch(err){setError(err instanceof Error?err.message:"Unable to create payout.");}}); }} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{isPending?"Creating Payout...":"Create Manual Competition Payout"}</button>
+                <button type="button" disabled={isPending} onClick={() => { setError(null); startTransition(async()=>{ try { await createMensCompetitionManual({name,competitionDate,entrants:entrantCount,entryFee:Number(entryFee),playerPayouts:manualLines.map(l=>({playerName:l.playerName,reason:l.reason,amount:Number(l.amount)})),sectionPayment:0,notes}); router.push("/payouts/approval"); router.refresh(); } catch(err){setError(err instanceof Error?err.message:"Unable to create payout.");}}); }} className="mt-6 w-full rounded-lg bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-50">{isPending?"Creating Payout...":"Create Manual Competition Payout"}</button>
               </section>
             ) : !preview ? (
               <div className="rounded-xl border border-dashed border-slate-300 bg-white p-12 text-center">
