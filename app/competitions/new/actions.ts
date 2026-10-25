@@ -167,11 +167,11 @@ export async function createMensCompetitionManual(input: {
 
   if (!playerPayouts.length) throw new Error("Add at least one player payout.");
 
-  const sectionPayment = Number(input.sectionPayment || 0);
-  if (sectionPayment < 0) throw new Error("Men's Section payment cannot be negative.");
-
   const competitionIncome = Math.round(entrants * entryFee * 100) / 100;
   const playerTotal = Math.round(playerPayouts.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
+  const paymentFeeAmount = Math.round(competitionIncome * 0.04 * 100) / 100;
+  const sectionPayment = Math.round((competitionIncome - playerTotal - paymentFeeAmount) * 100) / 100;
+  if (sectionPayment < 0) throw new Error("Player prizes and the 4% fee exceed competition income.");
   const totalPayout = Math.round((playerTotal + sectionPayment) * 100) / 100;
 
   const mensSection = await prisma.section.findUnique({ where: { code: "MENS" } });
@@ -193,7 +193,7 @@ export async function createMensCompetitionManual(input: {
         entryFee,
         prizeFundPercentage: 0,
         sectionPercentage: 0,
-        paymentFeeRate: 0,
+        paymentFeeRate: 0.04,
         grossPrize: null,
         twosEntrants: 0,
         twosEntryFee: 0,
@@ -214,8 +214,8 @@ export async function createMensCompetitionManual(input: {
         players: entrants,
         amountPerPlayer: entryFee,
         grossAmount: competitionIncome,
-        paymentFeeRate: 0,
-        paymentFeeAmount: 0,
+        paymentFeeRate: 0.04,
+        paymentFeeAmount,
         additionalFees: 0,
         netTopUpAmount: totalPayout,
         requestedById: user.id,
