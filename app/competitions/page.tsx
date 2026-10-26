@@ -1,13 +1,17 @@
-export default function CompetitionsPage() {
+import Link from "next/link";
+import { invoiceUser } from "@/lib/invoice-auth";
+
+export default async function CompetitionsPage() {
+  const treasurer = await invoiceUser();
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
       <div className="mx-auto max-w-6xl">
-        <a
+        <Link
           href="/"
           className="mb-5 inline-block text-sm font-medium text-slate-600 hover:text-slate-900"
         >
           ← Dashboard
-        </a>
+        </Link>
 
         <div className="mb-8">
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -26,7 +30,14 @@ export default function CompetitionsPage() {
         </div>
 
         <div className="grid gap-5 md:grid-cols-2">
-          <a
+          {treasurer && (
+            <Link href="/competitions/mens-payouts" className="rounded-xl border border-emerald-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+              <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Men&apos;s Section · Treasurer</p>
+              <h2 className="mt-2 text-xl font-semibold text-slate-900">Competition Payouts</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-600">Share player top-ups per competition on WhatsApp and remove duplicate payouts.</p>
+            </Link>
+          )}
+          <Link
             href="/competitions/new"
             className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
           >
@@ -43,9 +54,9 @@ export default function CompetitionsPage() {
               2&apos;s and the Men&apos;s
               section payment.
             </p>
-          </a>
+          </Link>
 
-          <a
+          <Link
             href="/winter-league"
             className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
           >
@@ -58,7 +69,7 @@ export default function CompetitionsPage() {
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Import rounds 1–6 and maintain the best-5 overall Winter League standings.
             </p>
-          </a>
+          </Link>
 
           <div className="rounded-xl border border-slate-200 bg-white p-6 opacity-60 shadow-sm">
             <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">

@@ -10,14 +10,12 @@ export async function deletePayout(
 ) {
   const session = await auth();
 
-  if (
-    !session?.user ||
-    session.user.role !== "ADMIN"
-  ) {
-    throw new Error(
-      "Only an administrator can delete payouts.",
-    );
-  }
+  const user = session?.user?.id ? await prisma.user.findFirst({
+    where: { id: session.user.id, active: true, role: { in: ["ADMIN", "TREASURER"] } },
+    select: { id: true },
+  }) : null;
+  if (!user) throw new Error("Only an administrator or treasurer can delete payouts.");
+  if (!payoutId.trim()) throw new Error("Payout not found.");
 
   const payout =
     await prisma.payoutRequest.findUnique({
@@ -42,6 +40,8 @@ export async function deletePayout(
   });
 
   revalidatePath("/");
+  revalidatePath("/competitions");
+  revalidatePath("/competitions/mens-payouts");
   revalidatePath(
     "/payouts/history",
   );

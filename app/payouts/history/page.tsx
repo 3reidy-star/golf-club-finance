@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   PayoutStatus,
 } from "@prisma/client";
@@ -66,47 +67,20 @@ export default async function HistoryPage() {
     redirect("/");
   }
 
-  const isAdmin =
-    session.user.role ===
-    "ADMIN";
-
-  const payouts =
-    await prisma.payoutRequest.findMany({
-      where: isAdmin
-        ? undefined
-        : {
-            status:
-              PayoutStatus.PAID,
-          },
-
-      include: {
-        section: true,
-        requestedBy: true,
-        approvedBy: true,
-        paidBy: true,
-        topUps: true,
-      },
-
-      orderBy: isAdmin
-        ? {
-            requestedAt:
-              "desc",
-          }
-        : {
-            paidAt:
-              "desc",
-          },
-    });
+  const payouts = await prisma.payoutRequest.findMany({
+    include: { section: true, requestedBy: true, approvedBy: true, paidBy: true, topUps: true },
+    orderBy: { requestedAt: "desc" },
+  });
 
   return (
     <main className="min-h-screen bg-slate-100 p-6 md:p-10">
       <div className="mx-auto max-w-7xl">
-        <a
+        <Link
           href="/"
           className="mb-5 inline-block text-sm font-medium text-slate-600 hover:text-slate-900"
         >
           ← Dashboard
-        </a>
+        </Link>
 
         <div className="mb-8">
           <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">
@@ -117,9 +91,9 @@ export default async function HistoryPage() {
             Payout History
           </h1>
 
-          {isAdmin && (
+          {(
             <p className="mt-2 text-sm text-slate-600">
-              Administrator view shows all payout statuses. Delete should only be used for duplicate or test records.
+              All payout statuses are shown. Delete should only be used for duplicate or test records.
             </p>
           )}
         </div>
@@ -140,7 +114,7 @@ export default async function HistoryPage() {
                       Date
                     </th>
 
-                    {isAdmin && (
+                    {(
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">
                         Status
                       </th>
@@ -170,9 +144,9 @@ export default async function HistoryPage() {
                       Paid By
                     </th>
 
-                    {isAdmin && (
+                    {(
                       <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">
-                        Admin
+                        Actions
                       </th>
                     )}
                   </tr>
@@ -195,7 +169,7 @@ export default async function HistoryPage() {
                           )}
                         </td>
 
-                        {isAdmin && (
+                        {(
                           <td className="px-4 py-3 text-sm">
                             <span
                               className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClasses(
@@ -225,7 +199,7 @@ export default async function HistoryPage() {
                               }
                             </p>
 
-                            {isAdmin && (
+                            {(
                               <p className="mt-1 text-xs text-slate-400">
                                 {
                                   payout.reference
@@ -271,7 +245,7 @@ export default async function HistoryPage() {
                           }
                         </td>
 
-                        {isAdmin && (
+                        {(
                           <td className="px-4 py-3 text-right">
                             <DeletePayoutButton
                               payoutId={
