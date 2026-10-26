@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { invoiceUser } from "@/lib/invoice-auth";
 import { PayoutStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
@@ -10,6 +11,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function TopUpsPage() {
+  const treasurer = await invoiceUser();
   const payouts =
     await prisma.payoutRequest.findMany({
       where: {
@@ -141,6 +143,12 @@ export default async function TopUpsPage() {
                       </p>
                     </div>
                   </div>
+
+                  {treasurer && payout.section.code === "MENS" && (
+                    <Link href={`/competitions/mens-payouts#${payout.id}`} className="mt-4 inline-block text-sm font-semibold text-emerald-700 underline">
+                      Manage this payout / delete duplicate
+                    </Link>
+                  )}
 
                   <div className="mt-6 overflow-hidden rounded-lg border border-slate-200">
                     <div className="bg-slate-50 px-4 py-3">

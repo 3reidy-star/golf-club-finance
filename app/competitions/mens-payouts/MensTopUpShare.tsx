@@ -12,7 +12,7 @@ export default function MensTopUpShare({ players, competitionName, competitionDa
   const preview = useRef<HTMLTextAreaElement>(null);
   const message = [
     "Men’s player top-ups",
-    `${competitionName} — ${competitionDate}`,
+    competitionDate ? `${competitionName} — ${competitionDate}` : competitionName,
     "",
     ...players.map(player => `${player.name} — ${money(player.amountPence)}`),
     "",

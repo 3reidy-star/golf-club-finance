@@ -67,7 +67,7 @@ test('Men’s competition sharing rejects other logins before querying payouts',
   }).default;
   await assert.rejects(Page(), /redirected/); assert.equal(queried, false);
 });
-test('competition page keeps completed player amounts available and queries only linked Men’s competitions', async () => {
+test('competition page keeps completed player amounts available and restricts payouts to the Men’s section', async () => {
   const competitions = ['October Medal', 'Autumn Cup'];
   let query;
   const Page = load('../app/competitions/mens-payouts/page.tsx', {
@@ -86,4 +86,35 @@ test('competition page keeps completed player amounts available and queries only
   assert.equal(messages.length, 2);
   assert.ok(messages[0].includes('October Medal Winner')); assert.ok(!messages[0].includes('Autumn Cup'));
   assert.ok(messages[1].includes('Autumn Cup Winner')); assert.ok(!messages[1].includes('October Medal'));
+});
+
+test('manual Men’s payouts without a competition link remain separate and can be located by reference', async () => {
+  let query;
+  const Page = load('../app/competitions/mens-payouts/page.tsx', {
+    'next/link': ({ children }) => React.createElement('a', null, children),
+    'next/navigation': { redirect: () => { throw new Error('redirected'); } },
+    '@/lib/invoice-auth': { invoiceUser: async () => ({ id: 'treasurer' }) },
+    '@/lib/prisma': { prisma: { payoutRequest: { findMany: async args => {
+      query = args;
+      return ['PAY-1', 'PAY-2'].map((reference, i) => ({
+        id: `manual-${i}`, reference, reason: 'Manual prize', status: 'APPROVED',
+        competition: null, requestedAt: new Date('2026-10-26T12:00:00Z'),
+        topUps: [{ recipientName: 'Rob Smith', amount: '20', completed: false }],
+      }));
+    } } } },
+    '@/app/payouts/history/DeletePayoutButton': ({ payoutId }) => React.createElement('button', { 'data-payout': payoutId }, 'Delete'),
+    './MensTopUpShare': Share,
+  }).default;
+  const html = renderToStaticMarkup(await Page());
+  assert.deepEqual(JSON.parse(JSON.stringify(query.where)), { section: { code: 'MENS' } });
+  assert.ok(html.includes('PAY-1')); assert.ok(html.includes('PAY-2'));
+  assert.ok(html.includes('id="manual-0"')); assert.ok(html.includes('id="manual-1"'));
+  assert.ok(html.includes('data-payout="manual-0"')); assert.ok(html.includes('data-payout="manual-1"'));
+  const messages = [...html.matchAll(/href="https:\/\/wa.me\/\?text=([^"]+)"/g)].map(match => decodeURIComponent(match[1]));
+  assert.equal(messages.length, 2);
+  for (const message of messages) {
+    assert.ok(message.includes('Rob Smith — £20.00'));
+    assert.ok(message.includes('Total: £20.00'));
+    assert.ok(!message.includes('26/10/2026'), 'request date must not be presented as a competition date');
+  }
 });
