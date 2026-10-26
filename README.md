@@ -60,3 +60,17 @@ bank transactions, not invoice issue dates. Live database migration and signed-i
 payment allocation must be checked after deployment.
 
 Calculation checks (Node 22.18+): `node --test tests/invoices.test.mjs`.
+
+
+### Database migrations during deployment
+
+The build runs `scripts/migrate-deploy.mjs` before generating Prisma Client and
+building Next.js. Migrations use `DIRECT_URL` when configured. For Neon, if only
+`DATABASE_URL` is configured, the script uses the same database and credentials
+with the `-pooler` hostname suffix removed for the migration subprocess only.
+The application continues to use its original pooled `DATABASE_URL`.
+
+Prisma advisory locking remains enabled. A P1002 advisory-lock timeout is retried
+up to three times, with ten seconds between attempts. Other migration errors fail
+the build immediately. Persistent lock contention still fails the build; allow
+other running migrations to finish before redeploying.
