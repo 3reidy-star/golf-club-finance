@@ -31,6 +31,14 @@ export async function GET(request:Request) {
  const income=[...categories].filter(([,v])=>v.income).map(([name,v])=>({name,amount:v.income})).sort((a,b)=>b.amount-a.amount);
  const expense=[...categories].filter(([,v])=>v.expense).map(([name,v])=>({name,amount:v.expense})).sort((a,b)=>b.amount-a.amount);
  const totalIn=income.reduce((n,v)=>n+v.amount,0),totalOut=expense.reduce((n,v)=>n+v.amount,0);
+ // Manually supplied estimates are separate from the cash transaction report.
+ // They remain attached to the 2026 year-end even when paid later.
+ const charityInputs = ["charityIncome", "charityCosts", "awardsAllocation"].map((key, index) => {
+   const raw = params.get(key) ?? ["9563.32", "1109.07", "83.00"][index];
+   if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(raw)) return NaN;
+   return Math.round(Number(raw) * 100);
+ });
+ if (code === "MENS" && year === 2026 && (charityInputs.some(Number.isNaN) || charityInputs[1] > charityInputs[0] + charityInputs[2])) return new NextResponse("Invalid charity figures", {status:400});
  const pdf=await PDFDocument.create();
  const normal=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
  const W=595.28,H=841.89;
@@ -83,6 +91,15 @@ export async function GET(request:Request) {
  room(116);
  section2("Closing position",[{name:"Opening balance",amount:opening},{name:"Net movement",amount:totalIn-totalOut}],opening+totalIn-totalOut);
  room(38);label("CLOSING BALANCE / CARRIED FORWARD",70,y-12,10,true,green);right(money(opening+totalIn-totalOut),y-12,12,true,green);y-=30;
+ if(code==="MENS" && year===2026){
+   const [charityIncome,charityCosts,awardsAllocation]=charityInputs;
+   section2("Thommo's Charity - provisional liability",[
+     {name:"Charity income",amount:charityIncome},
+     {name:"Awards Night allocation",amount:awardsAllocation},
+     {name:"Less charity costs",amount:-charityCosts},
+   ],charityIncome+awardsAllocation-charityCosts);
+   room(55);label("Manual figures: update charity costs before issuing the final report.",64,y-8,8,false,grey);label("The bank balance above has not been reduced by this liability.",64,y-22,8,false,grey);y-=44;
+ }
  room(55);label("Prepared from recorded bank transactions. Cash, debtors, creditors and",64,y-8,8,false,grey);label("restricted funds should be reviewed separately for the AGM.",64,y-22,8,false,grey);
  footerText();
  const bytes=await pdf.save();
