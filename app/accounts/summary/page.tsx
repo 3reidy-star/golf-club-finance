@@ -144,7 +144,21 @@ export default async function AccountsSummaryPage({
           </form>
         </section>
 
-        <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5"><h2 className="text-lg font-bold text-emerald-950">AGM annual accounts PDFs</h2><p className="mt-1 text-sm text-emerald-900">The 2026 AGM year runs from 1 November 2025 to 31 October 2026. Each export uses its own account transactions and category totals.</p><div className="mt-4 flex flex-wrap gap-3"><a href="/accounts/annual-pdf?account=MENS&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s 2026 PDF</a><a href="/accounts/annual-pdf?account=CLUB&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club 2026 PDF</a></div></section>
+        <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+          <h2 className="text-lg font-bold text-emerald-950">AGM annual accounts PDFs</h2>
+          <p className="mt-1 text-sm text-emerald-900">The 2026 AGM year runs from 1 November 2025 to 31 October 2026. Each export uses its own account transactions and category totals.</p>
+          <form action="/accounts/annual-pdf" method="get" className="mt-4 space-y-3">
+            <input type="hidden" name="account" value="MENS" /><input type="hidden" name="year" value="2026" />
+            <p className="text-sm text-emerald-900">Thommo&apos;s Charity liability is entered manually. Update the figures before downloading; they do not automatically change with bank transactions.</p>
+            <div className="flex flex-wrap gap-4">
+              <label className="text-sm font-medium text-emerald-950">Charity income (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="charityIncome" type="number" min="0" step="0.01" defaultValue="9563.32" required /></label>
+              <label className="text-sm font-medium text-emerald-950">Charity costs (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="charityCosts" type="number" min="0" step="0.01" defaultValue="1109.07" required /></label>
+              <label className="text-sm font-medium text-emerald-950">Awards allocation (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="awardsAllocation" type="number" min="0" step="0.01" defaultValue="83.00" required /></label>
+            </div>
+            <button className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s 2026 PDF</button>
+          </form>
+          <a href="/accounts/annual-pdf?account=CLUB&year=2026" className="mt-4 inline-block rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club 2026 PDF</a>
+        </section>
 
         {allTransactions.length === 0 ? (
           <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-6">
