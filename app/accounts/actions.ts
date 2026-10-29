@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getAccountCategories } from "@/lib/account-categories";
+import { santanderExportToTsv } from "@/lib/santander-export";
 
 async function requireTreasurer() {
   const session = await auth();
@@ -222,7 +223,7 @@ function buildParsedRows(text: string, accountCode: "CLUB" | "MENS", categories:
   const referenceIndex = find("reference", "transactionid", "id");
 
   if (dateIndex < 0 || descriptionIndex < 0 || (amountIndex < 0 && creditIndex < 0 && debitIndex < 0)) {
-    throw new Error("No Lloyds transaction rows were recognised. Paste the transaction list directly from the Lloyds page, including the dates and amounts.");
+    throw new Error("No transaction columns were recognised. Include Date, Description and Amount or Money in/Money out headings.");
   }
 
   const parsedRows: ParsedRow[] = [];
@@ -343,11 +344,15 @@ export async function importTransactions(_previousState: ImportState, formData: 
   if (accountCode !== "CLUB" && accountCode !== "MENS") return { error: "Choose an account." };
 
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Choose a CSV file to import." };
-  if (!file.name.toLowerCase().endsWith(".csv")) return { error: "Please export the transaction list as CSV before uploading." };
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a transaction file to import." };
+  const name = file.name.toLowerCase();
+  if (!name.endsWith(".csv") && !name.endsWith(".xls")) return { error: "Choose a CSV or Santander .xls transaction export." };
 
   try {
-    return await saveImportedRows({ accountCode, fileName: file.name, rows: buildParsedRows(await file.text(), accountCode, await getAccountCategories()), userId: user.id });
+    const text = name.endsWith(".xls")
+      ? santanderExportToTsv(new TextDecoder("windows-1252").decode(await file.arrayBuffer()))
+      : await file.text();
+    return await saveImportedRows({ accountCode, fileName: file.name, rows: buildParsedRows(text, accountCode, await getAccountCategories()), userId: user.id });
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Unable to read the CSV." };
   }
@@ -364,7 +369,7 @@ export async function importPastedTransactions(_previousState: ImportState, form
   try {
     return await saveImportedRows({
       accountCode,
-      fileName: `Pasted Lloyds transactions ${new Date().toISOString().slice(0, 10)}`,
+      fileName: `Pasted bank transactions ${new Date().toISOString().slice(0, 10)}`,
       rows: buildParsedRows(pastedData, accountCode, await getAccountCategories()),
       userId: user.id,
     });

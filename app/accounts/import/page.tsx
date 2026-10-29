@@ -37,7 +37,7 @@ export default async function AccountImportPage() {
             Import transactions
           </h1>
           <p className="mt-2 text-slate-600">
-            Either copy and paste transactions directly from online banking or upload a CSV file.
+            Either copy and paste transactions directly from online banking or upload a CSV or Santander XLS file.
           </p>
         </div>
 
@@ -60,10 +60,10 @@ export default async function AccountImportPage() {
           <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:p-8">
             <div className="mb-6">
               <h2 className="text-xl font-bold text-slate-900">
-                Upload CSV
+                Upload transactions
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-600">
-                Use this for the historical account files or when you download a transaction CSV from the bank.
+                Upload a Santander .xls export or a transaction CSV. Select the account before importing.
               </p>
             </div>
             <ImportForm />
