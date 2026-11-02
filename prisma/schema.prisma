@@ -246,6 +246,7 @@ model FinanceAccount {
   transactions AccountTransaction[]
   invoices     Invoice[]
   imports      AccountImportBatch[]
+  cashCounts   CashYearEnd[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -431,4 +432,34 @@ model CharityEntry {
 
   @@index([accountCode, effectiveDate])
   @@index([transactionId])
+}
+
+
+model CashYearEnd {
+  id            String         @id @default(cuid())
+  accountCode   AccountCode
+  account       FinanceAccount @relation(fields: [accountCode], references: [code], onDelete: Restrict)
+  year          Int
+  amountPence   Int
+  note          String         @default("")
+  version       Int            @default(1)
+  recordedById  String
+  recordedAt    DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  history       CashYearEndHistory[]
+
+  @@unique([accountCode, year])
+}
+
+model CashYearEndHistory {
+  id            String      @id @default(cuid())
+  cashCountId   String
+  cashCount     CashYearEnd @relation(fields: [cashCountId], references: [id], onDelete: Restrict)
+  amountPence   Int
+  note          String
+  recordedById  String
+  recordedAt    DateTime    @default(now())
+  version       Int
+
+  @@unique([cashCountId, version])
 }

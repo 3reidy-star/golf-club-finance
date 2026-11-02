@@ -57,7 +57,10 @@ export default async function AccountsSummaryPage({
     })),
   );
 
-  const charityEntries = await prisma.charityEntry.findMany({ where: { accountCode: "MENS" } });
+  const [charityEntries, cashCounts] = await Promise.all([
+    prisma.charityEntry.findMany({ where: { accountCode: "MENS" } }),
+    prisma.cashYearEnd.findMany({ where: { year } }),
+  ]);
   const start = new Date(Date.UTC(year, 0, 1));
   const end = new Date(Date.UTC(year + 1, 0, 1));
 
@@ -89,6 +92,8 @@ export default async function AccountsSummaryPage({
   const agmEnd = new Date(Date.UTC(year, 10, 1));
   const charity = reportCharity(charityEntries, mensTransactions, agmStart, agmEnd);
   const agmBankBalance = relevantAccounts.reduce((sum, account) => sum + Number(account.openingBalance) + account.transactions.filter(row => row.transactionDate < agmEnd).reduce((movement, row) => movement + Number(row.credit) - Number(row.debit), 0), 0);
+  const allCashEntered = relevantAccounts.length > 0 && relevantAccounts.every(account => cashCounts.some(count => count.accountCode === account.code));
+  const agmCashPence = relevantAccounts.reduce((sum, account) => sum + (cashCounts.find(count => count.accountCode === account.code)?.amountPence ?? 0), 0);
   const showCharity = accountFilter !== "CLUB";
 
   const totalCredit = yearTransactions.reduce((total, row) => total + Number(row.credit), 0);
@@ -169,9 +174,14 @@ export default async function AccountsSummaryPage({
           <div className="mt-4 flex flex-wrap gap-3"><a href="/accounts/annual-pdf?account=MENS&year=2026" className="rounded-lg border border-emerald-900 px-4 py-2 text-sm font-semibold text-emerald-900">Download without estimate</a><a href="/accounts/annual-pdf?account=CLUB&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club 2026 PDF</a></div>
         </section>
 
+        <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Cash on hand at 31 October {year}</h2><p className="mt-1 text-sm text-slate-600">Year-end cash counts are separate from bank transactions.</p></div><a href={`/accounts/cash?year=${year}`} className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white">Enter cash balances</a></div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">{relevantAccounts.map(account => { const cash = cashCounts.find(count => count.accountCode === account.code); return <div key={account.code}><p className="text-sm text-slate-500">{account.name}</p><p className="text-xl font-bold">{cash ? money(pounds(cash.amountPence)) : "Not entered"}</p></div>; })}</div>
+        </section>
+
         {showCharity && <section className="mt-6 rounded-xl border border-emerald-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Thommo&apos;s Charity</h2><p className="mt-1 text-sm text-slate-600">AGM year: 1 November {year - 1} to 31 October {year}.</p></div><a href="/accounts/charity" className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white">Manage charity allocations</a></div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3"><div><p className="text-sm text-slate-500">Section contribution in AGM year</p><p className="text-xl font-bold">{money(pounds(charity.contribution))}</p></div><div><p className="text-sm text-slate-500">Recorded payable at 31 October</p><p className="text-xl font-bold">{money(pounds(charity.closing))}</p></div><div><p className="text-sm text-slate-500">Bank balance less recorded charity amount</p><p className="text-xl font-bold">{money(agmBankBalance - pounds(charity.closing))}</p></div></div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3"><div><p className="text-sm text-slate-500">Section contribution in AGM year</p><p className="text-xl font-bold">{money(pounds(charity.contribution))}</p></div><div><p className="text-sm text-slate-500">Recorded payable at 31 October</p><p className="text-xl font-bold">{money(pounds(charity.closing))}</p></div><div><p className="text-sm text-slate-500">{allCashEntered ? "Bank and cash less recorded charity amount" : "Bank less recorded charity (cash not entered)"}</p><p className="text-xl font-bold">{money(agmBankBalance + (allCashEntered ? pounds(agmCashPence) : 0) - pounds(charity.closing))}</p></div></div>
           <p className="mt-4 text-sm text-amber-800">The balance includes only amounts allocated to the charity ledger. {charity.unmatched.length} bank transaction{charity.unmatched.length === 1 ? " is" : "s are"} categorised Thommo Charity but not allocated; check for other fundraising too. The bank figures below remain cash movements.</p>
         </section>}
 

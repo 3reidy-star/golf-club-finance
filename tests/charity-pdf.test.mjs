@@ -17,7 +17,7 @@ const entries = [
   { type: 'RECEIPT', amountPence: 10000, effectiveDate: day('2026-10-21'), transactionId: 'receipt', removedAt: null },
   { type: 'PAYMENT', amountPence: 18300, effectiveDate: day('2026-11-03'), transactionId: 'payment', removedAt: null },
 ];
-function route() {
+function route(cashCount = null) {
   class NextResponse { constructor(body, opts = {}) { this.body = body; this.status = opts.status ?? 200; } }
   const mocks = {
     'next/server': { NextResponse },
@@ -25,6 +25,7 @@ function route() {
     '@/lib/prisma': { prisma: {
       financeAccount: { findUnique: async args => ({ openingBalance: 1000, transactions: bank.filter(t => t.transactionDate < args.include.transactions.where.transactionDate.lt) }) },
       charityEntry: { findMany: async () => entries },
+      cashYearEnd: { findUnique: async ({ where }) => cashCount && where.accountCode_year.accountCode === cashCount.accountCode && where.accountCode_year.year === cashCount.year ? cashCount : null },
     } },
     '@/lib/charity-ledger': charity,
   };
@@ -77,5 +78,35 @@ test('incomplete, malformed or negative provisional estimates are rejected', asy
   ]) {
     const response = await route()({ url: `https://example.test/accounts/annual-pdf?account=MENS&year=2026&${input}` });
     assert.equal(response.status, 400);
+  }
+});
+
+
+test('cash on hand is reported as a separate year-end asset and included in the balance after charity', async () => {
+  const response = await route({ accountCode: 'MENS', year: 2026, amountPence: 12345 })({ url: 'https://example.test/accounts/annual-pdf?account=MENS&year=2026' });
+  const path = '/tmp/golf-cash-check-2026.pdf'; writeFileSync(path, response.body);
+  const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
+  assert.match(text, /TOTAL CLOSING BANK POSITION\s+£1,600\.00/);
+  assert.match(text, /TOTAL CASH ON HAND\s+£123\.45/);
+  assert.match(text, /TOTAL BANK AND CASH ON HAND\s+£1,723\.45/);
+  assert.match(text, /TOTAL BANK AND CASH LESS RECORDED CHARITY\s+£1,540\.45/);
+});
+test('unentered cash is explicitly marked, while a counted zero is reported as zero', async () => {
+  const absent = await document(2026); assert.match(absent, /Cash on hand at year end has not been entered/);
+  const response = await route({ accountCode: 'MENS', year: 2026, amountPence: 0 })({ url: 'https://example.test/accounts/annual-pdf?account=MENS&year=2026' });
+  const path = '/tmp/golf-cash-zero-2026.pdf'; writeFileSync(path, response.body);
+  const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
+  assert.match(text, /TOTAL CASH ON HAND\s+£0\.00/);
+  assert.doesNotMatch(text, /Cash on hand at year end has not been entered/);
+});
+
+test('cash counts are scoped to the selected account and year', async () => {
+  const get = route({ accountCode: 'MENS', year: 2026, amountPence: 12345 });
+  for (const input of ['account=CLUB&year=2026', 'account=MENS&year=2027']) {
+    const response = await get({ url: `https://example.test/accounts/annual-pdf?${input}` });
+    const path = '/tmp/golf-cash-scope.pdf'; writeFileSync(path, response.body);
+    const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
+    assert.match(text, /Cash on hand at year end has not been entered/);
+    assert.doesNotMatch(text, /TOTAL CASH ON HAND\s+£123\.45/);
   }
 });

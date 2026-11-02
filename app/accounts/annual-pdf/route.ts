@@ -25,6 +25,7 @@ export async function GET(request:Request) {
  const end = new Date(Date.UTC(year,10,1));
  const account = await prisma.financeAccount.findUnique({where:{code},include:{transactions:{where:{transactionDate:{lt:end}},orderBy:{transactionDate:"asc"}}}});
  if (!account) return new NextResponse("Account not found",{status:404});
+ const cashCount = await prisma.cashYearEnd.findUnique({ where: { accountCode_year: { accountCode: code, year } } });
  const opening = pennies(account.openingBalance)+account.transactions.filter(t=>t.transactionDate<start).reduce((n,t)=>n+pennies(t.credit)-pennies(t.debit),0);
  const rows = account.transactions.filter(t=>t.transactionDate>=start);
  const charityEntries = code === "MENS" ? await prisma.charityEntry.findMany({ where: { accountCode: "MENS" } }) : [];
@@ -105,9 +106,16 @@ export async function GET(request:Request) {
  section2("Expenditure",expense.map(x=>({name:x.name,amount:x.amount})),totalOut);
  room(116);
  section2("Closing bank position",[{name:"Opening bank balance",amount:opening},{name:"Net bank movement",amount:cashIn-cashOut}],cashClosing);
+ if (cashCount) {
+   section2("Cash on hand", [{name:"Cash counted at 31 October", amount:cashCount.amountPence}], cashCount.amountPence);
+   section2("Bank and cash on hand", [{name:"Closing bank balance", amount:cashClosing},{name:"Cash on hand", amount:cashCount.amountPence}], cashClosing+cashCount.amountPence);
+ } else {
+   room(35);label("Cash on hand at year end has not been entered.",64,y-8,8,false,grey);y-=26;
+ }
  if (code === "MENS") {
    section2("Recorded charity payable",[{name:"Opening charity balance",amount:charity.opening},{name:"Change in recorded charity balance",amount:charity.closing-charity.opening}],charity.closing);
-   section2("Bank less recorded charity",[{name:"Closing bank balance",amount:cashClosing},{name:"Less recorded charity payable",amount:-charity.closing}],cashClosing-charity.closing);
+   const assets = [{name:"Closing bank balance",amount:cashClosing}, ...(cashCount ? [{name:"Cash on hand",amount:cashCount.amountPence}] : []), {name:"Less recorded charity payable",amount:-charity.closing}];
+   section2(cashCount ? "Bank and cash less recorded charity" : "Bank less recorded charity",assets,cashClosing+(cashCount?.amountPence ?? 0)-charity.closing);
    if (charityEstimate) {
      const [incomeEstimate,costEstimate,awardsEstimate] = charityEstimate;
      section2("Charity estimate - manual",[{name:"Charity income",amount:incomeEstimate},{name:"Awards Night contribution",amount:awardsEstimate},{name:"Less charity costs",amount:-costEstimate}],incomeEstimate+awardsEstimate-costEstimate);
@@ -117,7 +125,7 @@ export async function GET(request:Request) {
    label(`Unallocated Thommo Charity bank transactions to review: ${charity.unmatched.length}.`,64,y-22,8,false,grey);
    label("Check for other charity receipts and obtain year-end accounts approval.",64,y-36,8,false,grey);y-=50;
  }
- room(55);label("Bank balances are cash movements. Other assets and liabilities",64,y-8,8,false,grey);label("should be reviewed separately for the AGM.",64,y-22,8,false,grey);
+ room(55);label("Cash on hand is a year-end count; bank transactions remain separate.",64,y-8,8,false,grey);label("Other assets and liabilities should be reviewed separately for the AGM.",64,y-22,8,false,grey);
  footerText();
  const bytes=await pdf.save();
  return new NextResponse(Buffer.from(bytes),{headers:{"Content-Type":"application/pdf","Content-Disposition":'attachment; filename="the-essex-'+code.toLowerCase()+'-annual-accounts-'+year+'.pdf"',"Cache-Control":"private, no-store"}});
