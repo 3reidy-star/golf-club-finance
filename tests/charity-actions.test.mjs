@@ -36,7 +36,7 @@ function harness({ user = { id: 'treasurer' }, bank, existing = [seed] } = {}) {
   new Function('exports', 'require', code)(exports, name => Object.hasOwn(mocks, name) ? mocks[name] : require(name));
   return { ...exports, written };
 }
-const receipt = { id: 'bank-1', accountCode: 'MENS', transactionDate: date, description: 'Raffle', credit: 100, debit: 0, charityEntries: [], invoicePayments: [] };
+const receipt = { category: 'Other', id: 'bank-1', accountCode: 'MENS', transactionDate: date, description: 'Raffle', credit: 100, debit: 0, charityEntries: [], invoicePayments: [] };
 function form(values) { const data = new FormData(); for (const [key, value] of Object.entries(values)) for (const item of Array.isArray(value) ? value : [value]) data.append(key, String(item)); return data; }
 
 test('allocation checks account, direction, invoice allocations and duplicate charity matches', async () => {

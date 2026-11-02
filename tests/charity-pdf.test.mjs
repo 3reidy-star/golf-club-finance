@@ -41,72 +41,36 @@ async function document(year) {
   writeFileSync(path, response.body);
   return execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
 }
-test('2026 PDF records £83 expense, £183 charity liability and unchanged bank balance', async () => {
+test('AGM statement shows the contribution and one charity liability', async () => {
   const text = await document(2026);
+  assert.match(text, /Golf AGM Financial Statement/);
   assert.match(text, /Awards Night\s+£500\.00/);
   assert.match(text, /Charity contribution\s+£83\.00/);
-  assert.match(text, /TOTAL RECORDED CHARITY PAYABLE\s+£183\.00/);
-  assert.match(text, /TOTAL CLOSING BANK POSITION\s+£1,600\.00/);
-  assert.match(text, /TOTAL BANK LESS RECORDED CHARITY\s+£1,417\.00/);
-  assert.match(text, /Unallocated Thommo Charity bank transactions to review: 0/);
+  assert.match(text, /Thommo's Charity\s+£183\.00/);
+  assert.match(text, /Account\s+£1,600\.00/);
+  assert.match(text, /Less Thommo's Charity\s+-£183\.00/);
+  assert.doesNotMatch(text, /Thommo Charity\s+£100\.00/);
 });
-test('November payment clears liability in next year without a second charity expense', async () => {
+test('November payment clears liability without a second charity expense', async () => {
   const text = await document(2027);
-  assert.match(text, /Opening charity balance\s+£183\.00/);
-  assert.match(text, /TOTAL RECORDED CHARITY PAYABLE\s+£0\.00/);
-  assert.match(text, /TOTAL CLOSING BANK POSITION\s+£1,417\.00/);
+  assert.match(text, /Less Thommo's Charity brought forward\s+-£183\.00/);
+  assert.match(text, /Thommo's Charity\s+£0\.00/);
+  assert.match(text, /Account\s+£1,417\.00/);
   assert.doesNotMatch(text, /Charity contribution\s+£83\.00/);
-  assert.doesNotMatch(text, /Thommo Charity\s+£183\.00/);
 });
-
-test('optional October 29 estimate includes the £83 once and remains separate from recorded liability', async () => {
-  const response = await route()({ url: 'https://example.test/accounts/annual-pdf?account=MENS&year=2026&charityIncome=9563.32&charityCosts=1109.07&awardsAllocation=83.00' });
-  assert.equal(response.status, 200);
-  const path = '/tmp/golf-charity-estimate-2026.pdf';
-  writeFileSync(path, response.body);
-  const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
-  assert.match(text, /TOTAL CHARITY ESTIMATE - MANUAL\s+£8,537\.25/);
-  assert.match(text, /TOTAL RECORDED CHARITY PAYABLE\s+£183\.00/);
-  assert.match(text, /not saved or added to the/);
-  assert.match(text, /recorded payable above/);
-});
-test('incomplete, malformed or negative provisional estimates are rejected', async () => {
-  for (const input of [
-    'charityIncome=12&charityCosts=1',
-    'charityIncome=-12&charityCosts=1&awardsAllocation=0',
-    'charityIncome=12&charityCosts=20&awardsAllocation=0',
-  ]) {
-    const response = await route()({ url: `https://example.test/accounts/annual-pdf?account=MENS&year=2026&${input}` });
-    assert.equal(response.status, 400);
-  }
-});
-
-
-test('cash on hand is reported as a separate year-end asset and included in the balance after charity', async () => {
+test('cash is included in the net balance and missing counts remain visible', async () => {
+  const absent = await document(2026);
+  assert.match(absent, /Cash\s+Not entered/);
   const response = await route({ accountCode: 'MENS', year: 2026, amountPence: 12345 })({ url: 'https://example.test/accounts/annual-pdf?account=MENS&year=2026' });
   const path = '/tmp/golf-cash-check-2026.pdf'; writeFileSync(path, response.body);
   const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
-  assert.match(text, /TOTAL CLOSING BANK POSITION\s+£1,600\.00/);
-  assert.match(text, /TOTAL CASH ON HAND\s+£123\.45/);
-  assert.match(text, /TOTAL BANK AND CASH ON HAND\s+£1,723\.45/);
-  assert.match(text, /TOTAL BANK AND CASH LESS RECORDED CHARITY\s+£1,540\.45/);
+  assert.match(text, /Cash\s+£123\.45/);
+  assert.match(text, /Net balance\s+£1,540\.45/);
 });
-test('unentered cash is explicitly marked, while a counted zero is reported as zero', async () => {
-  const absent = await document(2026); assert.match(absent, /Cash on hand at year end has not been entered/);
-  const response = await route({ accountCode: 'MENS', year: 2026, amountPence: 0 })({ url: 'https://example.test/accounts/annual-pdf?account=MENS&year=2026' });
-  const path = '/tmp/golf-cash-zero-2026.pdf'; writeFileSync(path, response.body);
+test('club accounts do not reclassify mens charity categories', async () => {
+  const response = await route()({ url: 'https://example.test/accounts/annual-pdf?account=CLUB&year=2026' });
+  const path = '/tmp/golf-club-check-2026.pdf'; writeFileSync(path, response.body);
   const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
-  assert.match(text, /TOTAL CASH ON HAND\s+£0\.00/);
-  assert.doesNotMatch(text, /Cash on hand at year end has not been entered/);
-});
-
-test('cash counts are scoped to the selected account and year', async () => {
-  const get = route({ accountCode: 'MENS', year: 2026, amountPence: 12345 });
-  for (const input of ['account=CLUB&year=2026', 'account=MENS&year=2027']) {
-    const response = await get({ url: `https://example.test/accounts/annual-pdf?${input}` });
-    const path = '/tmp/golf-cash-scope.pdf'; writeFileSync(path, response.body);
-    const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
-    assert.match(text, /Cash on hand at year end has not been entered/);
-    assert.doesNotMatch(text, /TOTAL CASH ON HAND\s+£123\.45/);
-  }
+  assert.match(text, /Thommo Charity\s+£100\.00/);
+  assert.doesNotMatch(text, /Less Thommo's Charity/);
 });

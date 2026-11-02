@@ -5,128 +5,96 @@ import { prisma } from "@/lib/prisma";
 import { reportCharity } from "@/lib/charity-ledger";
 
 export const dynamic = "force-dynamic";
-const ink = rgb(0.09,0.16,0.20);
-const green = rgb(0.08,0.28,0.24);
-const gold = rgb(0.71,0.56,0.32);
-const grey = rgb(0.43,0.48,0.49);
-const pale = rgb(0.95,0.97,0.96);
-const pennies = (n: unknown) => Math.round(Number(n)*100);
-const money = (n:number) => (n<0?"-":"")+"£"+(Math.abs(n)/100).toLocaleString("en-GB",{minimumFractionDigits:2,maximumFractionDigits:2});
-const displayDate = (d:Date) => d.toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric",timeZone:"UTC"});
+const pennies = (n: unknown) => Math.round(Number(n) * 100);
+const money = (pence: number) => `${pence < 0 ? "-" : ""}£${(Math.abs(pence) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const period = (date: Date) => date.toLocaleDateString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" }).replace(" ", "-");
 
-export async function GET(request:Request) {
- const user = await auth();
- if (!user?.user || user.user.role !== "TREASURER") return new NextResponse("Forbidden",{status:403});
- const params = new URL(request.url).searchParams;
- const code = params.get("account");
- const year = Number(params.get("year"));
- if ((code!=="CLUB"&&code!=="MENS") || !Number.isInteger(year) || year<2000 || year>2100) return new NextResponse("Invalid account or year",{status:400});
- const start = new Date(Date.UTC(year-1,10,1));
- const end = new Date(Date.UTC(year,10,1));
- const account = await prisma.financeAccount.findUnique({where:{code},include:{transactions:{where:{transactionDate:{lt:end}},orderBy:{transactionDate:"asc"}}}});
- if (!account) return new NextResponse("Account not found",{status:404});
- const cashCount = await prisma.cashYearEnd.findUnique({ where: { accountCode_year: { accountCode: code, year } } });
- const opening = pennies(account.openingBalance)+account.transactions.filter(t=>t.transactionDate<start).reduce((n,t)=>n+pennies(t.credit)-pennies(t.debit),0);
- const rows = account.transactions.filter(t=>t.transactionDate>=start);
- const charityEntries = code === "MENS" ? await prisma.charityEntry.findMany({ where: { accountCode: "MENS" } }) : [];
- const charity = reportCharity(charityEntries, account.transactions, start, end);
- const cashIn = rows.reduce((n,t)=>n+pennies(t.credit),0), cashOut = rows.reduce((n,t)=>n+pennies(t.debit),0);
- const cashClosing = opening + cashIn - cashOut;
- const categories = new Map<string,{income:number;expense:number}>();
- for(const t of rows){const v=categories.get(t.category)??{income:0,expense:0};v.income+=pennies(t.credit);v.expense+=pennies(t.debit);categories.set(t.category,v);}
- for (const [name,change] of charity.adjustments) {
-   const value = categories.get(name);
-   if (!value) throw new Error("Charity allocation has no matching transaction in the reporting period.");
-   value.income += change.income; value.expense += change.expense;
- }
- if (charity.contribution) {
-   const value = categories.get("Charity contribution") ?? {income:0,expense:0};
-   value.expense += charity.contribution; categories.set("Charity contribution", value);
- }
- const income=[...categories].filter(([,v])=>v.income).map(([name,v])=>({name,amount:v.income})).sort((a,b)=>b.amount-a.amount);
- const expense=[...categories].filter(([,v])=>v.expense).map(([name,v])=>({name,amount:v.expense})).sort((a,b)=>b.amount-a.amount);
- const totalIn=income.reduce((n,v)=>n+v.amount,0),totalOut=expense.reduce((n,v)=>n+v.amount,0);
- const estimateKeys = ["charityIncome", "charityCosts", "awardsAllocation"];
- const estimateRequested = code === "MENS" && year === 2026 && estimateKeys.some(key => params.has(key));
- let charityEstimate: number[] | null = null;
- if (estimateRequested) {
-   const raw = estimateKeys.map(key => params.get(key) ?? "");
-   if (raw.some(value => !/^\d{1,9}(?:\.\d{1,2})?$/.test(value))) return new NextResponse("Invalid charity estimate", {status:400});
-   charityEstimate = raw.map(value => Math.round(Number(value) * 100));
-   if (charityEstimate[1] > charityEstimate[0] + charityEstimate[2]) return new NextResponse("Charity costs exceed the amount raised", {status:400});
- }
- const pdf=await PDFDocument.create();
- const normal=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
- const W=595.28,H=841.89;
- let page=pdf.addPage([W,H]),y=H-210;
- const label=(s:string,x:number,yy:number,size=10,isBold=false,color=ink)=>page.drawText(s.replace(/–/g,"-"),{x,y:yy,size,font:isBold?bold:normal,color});
- const right=(s:string,yy:number,size=10,isBold=false,color=ink)=>label(s,W-48-(isBold?bold:normal).widthOfTextAtSize(s,size),yy,size,isBold,color);
- const rule=(yy:number)=>page.drawLine({start:{x:48,y:yy},end:{x:W-48,y:yy},thickness:0.7,color:gold});
- const footer=()=>{rule(55);label("THE ESSEX  |  ANNUAL ACCOUNTS",48,39,8,true,grey);right("Page "+pdf.getPageCount(),39,8,false,grey);};
- const newPage=()=>{footer();page=pdf.addPage([W,H]);y=H-92;label("THE ESSEX  |  "+(code==="MENS"?"MEN'S ACCOUNT":"CLUB ACCOUNT"),48,H-53,12,true,green);rule(H-66);};
- const ensure=(height:number)=>{if(y-height<90)newPage();};
- // Reproduce the approved AGM design: white paper, centred crest/wordmark,
- // understated green section headings, alternating pale rows and fine gold totals.
- const crest = (cx:number,top:number,scale:number) => {
-   const px=(n:number)=>cx+(n-50)*scale, py=(n:number)=>top-n*scale;
-   const strokes=[[[50,0],[19,8],[13,28],[13,54],[23,77],[36,91],[46,96]],
-                  [[50,0],[81,8],[87,28],[87,54],[77,77],[64,91],[54,96]]];
-   for(const points of strokes)for(let i=1;i<points.length;i++)page.drawLine({start:{x:px(points[i-1][0]),y:py(points[i-1][1])},end:{x:px(points[i][0]),y:py(points[i][1])},thickness:3*scale,color:ink});
-   for(const offset of [0,7,14])page.drawLine({start:{x:px(23),y:py(48+offset/2)},end:{x:px(72),y:py(46+offset/2)},thickness:1.4*scale,color:ink});
- };
- const title = (text:string,yy:number,size:number,color=ink) => label(text,(W-bold.widthOfTextAtSize(text,size))/2,yy,size,true,color);
- const subtitle=(text:string,yy:number,size:number,color=green)=>label(text,(W-normal.widthOfTextAtSize(text,size))/2,yy,size,false,color);
- const footerText=()=>{rule(44);label("THE ESSEX  |  AGM FINANCIAL STATEMENT",59,30,7,true,grey);right("Page "+pdf.getPageCount(),30,7,false,grey);};
- // Replace the original header and compact card layout.
- page.drawRectangle({x:0,y:0,width:W,height:H,color:rgb(1,1,1)});
- crest(W/2,H-47,0.72);
- title("THE ESSEX",H-157,21);
- title("BY THE CLUB COMPANY",H-174,8);
- title("ANNUAL GENERAL MEETING",H-226,20);
- subtitle((code==="MENS"?"MEN'S ACCOUNT":"CLUB ACCOUNT")+"  |  "+displayDate(start)+" - "+displayDate(new Date(end.getTime()-86400000)),H-246,9);
- y=H-285;
- const next = () => {footerText();page=pdf.addPage([W,H]);y=H-86;title("THE ESSEX",H-45,13);subtitle(code==="MENS"?"MEN'S ACCOUNT":"CLUB ACCOUNT",H-62,9);rule(H-73);};
- const room=(height:number)=>{if(y-height<76)next();};
- const row=(name:string,amount:number,index:number,strong=false)=>{
-   room(26);
-   if(index%2===1)page.drawRectangle({x:48,y:y-21,width:W-96,height:25,color:pale});
-   label(name.slice(0,64),70,y-14,9,strong,strong?green:ink);
-   right(money(amount),y-14,9,strong,strong?green:ink);
-   y-=26;
- };
- const section2=(heading:string,items:{name:string;amount:number}[],total?:number)=>{
-   room(76);label(heading.toUpperCase(),64,y-10,11,true,green);y-=30;
-   if(!items.length){row("No transactions recorded",0,0); }
-   else items.forEach((r,i)=>row(r.name,r.amount,i));
-   if(total!==undefined){room(32);rule(y-1);row("TOTAL "+heading.toUpperCase(),total,0,true);y-=8;}
-   y-=16;
- };
- section2("Opening position",[{name:"Balance carried forward",amount:opening}],opening);
- section2("Income",income.map(x=>({name:x.name,amount:x.amount})),totalIn);
- section2("Expenditure",expense.map(x=>({name:x.name,amount:x.amount})),totalOut);
- room(116);
- section2("Closing bank position",[{name:"Opening bank balance",amount:opening},{name:"Net bank movement",amount:cashIn-cashOut}],cashClosing);
- if (cashCount) {
-   section2("Cash on hand", [{name:"Cash counted at 31 October", amount:cashCount.amountPence}], cashCount.amountPence);
-   section2("Bank and cash on hand", [{name:"Closing bank balance", amount:cashClosing},{name:"Cash on hand", amount:cashCount.amountPence}], cashClosing+cashCount.amountPence);
- } else {
-   room(35);label("Cash on hand at year end has not been entered.",64,y-8,8,false,grey);y-=26;
- }
- if (code === "MENS") {
-   section2("Recorded charity payable",[{name:"Opening charity balance",amount:charity.opening},{name:"Change in recorded charity balance",amount:charity.closing-charity.opening}],charity.closing);
-   const assets = [{name:"Closing bank balance",amount:cashClosing}, ...(cashCount ? [{name:"Cash on hand",amount:cashCount.amountPence}] : []), {name:"Less recorded charity payable",amount:-charity.closing}];
-   section2(cashCount ? "Bank and cash less recorded charity" : "Bank less recorded charity",assets,cashClosing+(cashCount?.amountPence ?? 0)-charity.closing);
-   if (charityEstimate) {
-     const [incomeEstimate,costEstimate,awardsEstimate] = charityEstimate;
-     section2("Charity estimate - manual",[{name:"Charity income",amount:incomeEstimate},{name:"Awards Night contribution",amount:awardsEstimate},{name:"Less charity costs",amount:-costEstimate}],incomeEstimate+awardsEstimate-costEstimate);
-     room(52);label("Provisional estimate: user-entered figures, not saved or added to the",64,y-8,8,false,grey);label("recorded payable above. Update and verify all costs before issue.",64,y-22,8,false,grey);y-=38;
-   }
-   room(60);label("Charity payable includes only amounts allocated to the charity ledger.",64,y-8,8,false,grey);
-   label(`Unallocated Thommo Charity bank transactions to review: ${charity.unmatched.length}.`,64,y-22,8,false,grey);
-   label("Check for other charity receipts and obtain year-end accounts approval.",64,y-36,8,false,grey);y-=50;
- }
- room(55);label("Cash on hand is a year-end count; bank transactions remain separate.",64,y-8,8,false,grey);label("Other assets and liabilities should be reviewed separately for the AGM.",64,y-22,8,false,grey);
- footerText();
- const bytes=await pdf.save();
- return new NextResponse(Buffer.from(bytes),{headers:{"Content-Type":"application/pdf","Content-Disposition":'attachment; filename="the-essex-'+code.toLowerCase()+'-annual-accounts-'+year+'.pdf"',"Cache-Control":"private, no-store"}});
+export async function GET(request: Request) {
+  const session = await auth();
+  if (!session?.user || session.user.role !== "TREASURER") return new NextResponse("Forbidden", { status: 403 });
+  const params = new URL(request.url).searchParams;
+  const code = params.get("account"), year = Number(params.get("year"));
+  if ((code !== "MENS" && code !== "CLUB") || !Number.isInteger(year) || year < 2000 || year > 2100) return new NextResponse("Invalid account or year", { status: 400 });
+  const start = new Date(Date.UTC(year - 1, 10, 1)), end = new Date(Date.UTC(year, 10, 1));
+  const [account, currentCash, previousCash, charityEntries] = await Promise.all([
+    prisma.financeAccount.findUnique({ where: { code }, include: { transactions: { where: { transactionDate: { lt: end } }, include: { invoicePayments: { where: { removedAt: null }, select: { amountPence: true } } }, orderBy: { transactionDate: "asc" } } } }),
+    prisma.cashYearEnd.findUnique({ where: { accountCode_year: { accountCode: code, year } } }),
+    prisma.cashYearEnd.findUnique({ where: { accountCode_year: { accountCode: code, year: year - 1 } } }),
+    code === "MENS" ? prisma.charityEntry.findMany({ where: { accountCode: "MENS" } }) : Promise.resolve([]),
+  ]);
+  if (!account) return new NextResponse("Account not found", { status: 404 });
+  const openingBank = pennies(account.openingBalance) + account.transactions.filter(t => t.transactionDate < start).reduce((n, t) => n + pennies(t.credit) - pennies(t.debit), 0);
+  const rows = account.transactions.filter(t => t.transactionDate >= start);
+  const bankMovement = rows.reduce((n, t) => n + pennies(t.credit) - pennies(t.debit), 0);
+  const closingBank = openingBank + bankMovement;
+  const charity = reportCharity(charityEntries, code === "MENS" ? account.transactions : [], start, end);
+  const categories = new Map<string, { income: number; expense: number }>();
+  for (const t of rows) { const v = categories.get(t.category) ?? { income: 0, expense: 0 }; v.income += pennies(t.credit); v.expense += pennies(t.debit); categories.set(t.category, v); }
+  for (const [name, change] of charity.adjustments) {
+    const value = categories.get(name);
+    if (!value) throw new Error("Charity allocation has no matching transaction in the reporting period.");
+    value.income += change.income; value.expense += change.expense;
+  }
+  if (charity.contribution) { const value = categories.get("Charity contribution") ?? { income: 0, expense: 0 }; value.expense += charity.contribution; categories.set("Charity contribution", value); }
+  const income = [...categories].filter(([, v]) => v.income !== 0).map(([name, v]) => ({ name, amount: v.income })).sort((a, b) => b.amount - a.amount);
+  const expense = [...categories].filter(([, v]) => v.expense !== 0).map(([name, v]) => ({ name, amount: v.expense })).sort((a, b) => b.amount - a.amount);
+  const totalIn = income.reduce((n, v) => n + v.amount, 0), totalOut = expense.reduce((n, v) => n + v.amount, 0);
+
+  const pdf = await PDFDocument.create(), normal = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const W = 595.28, H = 841.89, left = 60, right = W - 60, grey = rgb(0.68, 0.68, 0.68), pale = rgb(0.90, 0.90, 0.90), ink = rgb(0.08, 0.08, 0.08);
+  // Match the supplied AGM statement, shrinking rows only as needed to keep
+  // ordinary annual statements on a page; unusually long ones continue safely.
+  const count = income.length + expense.length + 16;
+  const rowH = Math.min(12, Math.max(8.3, (H - 230) / Math.max(count, 1)));
+  const fontSize = Math.min(9, Math.max(7.2, rowH - 1.3));
+  let page = pdf.addPage([W, H]), y = H - 44, pageNumber = 1;
+  const label = (text: string, x: number, baseline: number, size = fontSize, strong = false) => page.drawText(text, { x, y: baseline, size, font: strong ? bold : normal, color: ink });
+  const rightText = (text: string, baseline: number, strong = false) => label(text, right - 4 - (strong ? bold : normal).widthOfTextAtSize(text, fontSize), baseline, fontSize, strong);
+  const center = (text: string, baseline: number, size: number, strong = false) => label(text, (W - (strong ? bold : normal).widthOfTextAtSize(text, size)) / 2, baseline, size, strong);
+  function newPage() { page = pdf.addPage([W, H]); pageNumber++; y = H - 40; center("Golf AGM Financial Statement (continued)", y, 12, true); y -= 24; }
+  function room(height: number) { if (y - height < 35) newPage(); }
+  function bar(text: string) { room(rowH + 5); page.drawRectangle({ x: left, y: y - rowH, width: right - left, height: rowH, color: grey }); center(text, y - rowH + 2, fontSize, true); y -= rowH + 2; }
+  function row(name: string, amount: number | null | undefined, shade = false, strong = false) {
+    room(rowH + 2);
+    if (shade) page.drawRectangle({ x: left, y: y - rowH, width: right - left, height: rowH, color: pale });
+    const value = amount === undefined ? "" : amount === null ? "Not entered" : money(amount);
+    let display = name; const maxWidth = right - left - 135;
+    while (normal.widthOfTextAtSize(display, fontSize) > maxWidth && display.length > 4) display = display.slice(0, -2);
+    if (display !== name) display += "...";
+    label(display, left + 3, y - rowH + 2, fontSize, strong); rightText(value, y - rowH + 2, strong); y -= rowH + 1;
+  }
+  function section(title: string, items: { name: string; amount: number }[], total: number) {
+    y -= 5; bar(title);
+    if (!items.length) row("No transactions recorded", undefined);
+    else for (const item of items) row(item.name, item.amount);
+    row("Sub-Total", total, true, true);
+  }
+  center("Golf AGM Financial Statement", y, 15, true); y -= 25;
+  center("The Essex Golf & Country Club", y, 13, true); y -= 24;
+  room(rowH + 3); page.drawRectangle({ x: left, y: y - rowH, width: right - left, height: rowH, color: grey });
+  label("Period", left + 3, y - rowH + 2, fontSize, true);
+  label(`${period(start)}                 to                 ${period(new Date(end.getTime() - 86400000))}`, left + 158, y - rowH + 2); y -= rowH + 9;
+  row("Carried Forward - bank", openingBank);
+  row("Cash", previousCash?.amountPence ?? null);
+  if (code === "MENS" && charity.opening) row("Less Thommo's Charity brought forward", -charity.opening);
+  row("Net Opening Balance", previousCash ? openingBank + previousCash.amountPence - (code === "MENS" ? charity.opening : 0) : null, true, true);
+  section("Income", income, totalIn);
+  section("Expenses", expense, totalOut);
+  y -= 5; bar("Creditors");
+  if (code === "MENS") row("Thommo's Charity", charity.closing);
+  else row("Other creditors: not assessed", undefined);
+  y -= 5; bar("Debtors"); row("Not assessed", undefined);
+  y -= 5; bar("Closing Balance"); row("Account", closingBank); row("Cash", currentCash?.amountPence ?? null);
+  if (code === "MENS") row("Less Thommo's Charity", -charity.closing);
+  y -= 5; bar("Carried Forward");
+  row("Net balance", currentCash ? closingBank + currentCash.amountPence - (code === "MENS" ? charity.closing : 0) : null, false, true);
+  y -= 4; room(30);
+  if (!previousCash || !currentCash) { label("Cash must be entered before the corresponding net balance can be calculated.", left + 3, y - fontSize, Math.max(7, fontSize - 0.5)); y -= rowH; }
+  if (code === "MENS") {
+    room(30);
+    label(`Charity: recorded transactions; ${charity.review.length} transaction(s) need review.`, left + 3, y - fontSize, Math.max(7, fontSize - 0.5)); y -= rowH;
+    label("Check other charity funds, creditors and debtors separately.", left + 3, y - fontSize, Math.max(7, fontSize - 0.5));
+  }
+  if (pageNumber > 1) label(`Page ${pageNumber}`, right - 35, 20, 7);
+  return new NextResponse(Buffer.from(await pdf.save()), { headers: { "Content-Type": "application/pdf", "Content-Disposition": `attachment; filename="the-essex-${code.toLowerCase()}-annual-accounts-${year}.pdf"`, "Cache-Control": "private, no-store" } });
 }

@@ -18,18 +18,19 @@ test('October includes Awards contribution and allocated fundraising; November p
   assert.equal(charityBalance(entries, day('2026-11-04')), 0);
   assert.doesNotThrow(() => validateTimeline(entries));
   const previous = reportCharity(entries, rows, day('2025-11-01'), day('2026-11-01'));
-  assert.equal(previous.contribution, 8300); assert.equal(previous.closing, 18300);
-  assert.deepEqual(previous.adjustments.get('Thommo Charity'), { income: -10000, expense: 0 });
-  assert.deepEqual(previous.unmatched.map(r => r.id), ['unmatched']);
+  assert.equal(previous.contribution, 8300); assert.equal(previous.closing, 19300);
+  assert.deepEqual(previous.adjustments.get('Thommo Charity'), { income: -11000, expense: 0 });
+  assert.equal(previous.review.length, 0);
   const next = reportCharity(entries, rows, day('2026-11-01'), day('2027-11-01'));
-  assert.equal(next.opening, 18300); assert.equal(next.closing, 0); assert.equal(next.contribution, 0);
+  assert.equal(next.opening, 19300); assert.equal(next.closing, 1000); assert.equal(next.contribution, 0);
   assert.deepEqual(next.adjustments.get('Thommo Charity'), { income: 0, expense: -18300 });
 });
 test('partial allocation only removes the allocated amount from the bank category', () => {
   const partial = { ...receipt, amountPence: 4000 };
   const report = reportCharity([partial], rows, day('2025-11-01'), day('2026-11-01'));
-  assert.equal(report.closing, 4000);
-  assert.equal(report.adjustments.get('Thommo Charity').income, -4000);
+  assert.equal(report.closing, 5000);
+  assert.equal(report.adjustments.get('Thommo Charity').income, -5000);
+  assert.deepEqual(report.review.map(r => r.id), ['credit']);
 });
 test('prevent payments exceeding the recorded balance on any date and ignore removed entries', () => {
   assert.throws(() => validateTimeline([receipt, { ...payment, effectiveDate: day('2026-10-25') }, contribution]), /negative/);
@@ -56,4 +57,35 @@ test('charity event costs reduce the amount owed, even when paid before receipts
   const report = reportCharity(entries, bankRows, day('2025-11-01'), day('2026-11-01'));
   assert.deepEqual(report.adjustments.get('Thommo Charity'), { income: -956332, expense: -110907 });
   assert.equal(report.contribution, 8300);
+});
+
+test('automatically includes charity receipts and costs without counting allocations twice', () => {
+  const bankRows = [
+    { id: 'opening', transactionDate: day('2025-10-24'), category: 'Thommo Charity', credit: 127, debit: 0 },
+    { id: 'raised', transactionDate: day('2026-10-20'), category: 'Thommo Charity', credit: 10063.32, debit: 0 },
+    { id: 'cost', transactionDate: day('2026-10-21'), category: 'Thommo Charity', credit: 0, debit: 1109.07 },
+  ];
+  const allocated = { type: 'RECEIPT', amountPence: 1006332, effectiveDate: day('2026-10-20'), transactionId: 'raised', removedAt: null };
+  const r = reportCharity([contribution, allocated], bankRows, day('2025-11-01'), day('2026-11-01'));
+  assert.equal(r.opening, 12700);
+  assert.equal(r.closing, 916425);
+  assert.deepEqual(r.adjustments.get('Thommo Charity'), { income: -1006332, expense: -110907 });
+  assert.equal(r.review.length, 0);
+});
+test('removed and conflicting transactions are flagged for review', () => {
+  const removed = { ...receipt, removedAt: day('2026-10-25') };
+  const conflicting = { id: 'conflict', transactionDate: day('2026-10-20'), category: 'Thommo Charity', credit: 12, debit: 0, invoicePayments: [{ amountPence: 1200 }] };
+  const r = reportCharity([removed], [rows[0], conflicting], day('2025-11-01'), day('2026-11-01'));
+  assert.equal(r.closing, 0);
+  assert.deepEqual(r.review.map(x => x.id), ['credit', 'conflict']);
+});
+
+test('historical 2024 charity category does not inflate the current appeal', () => {
+  const history = [
+    { id: 'old', transactionDate: day('2024-09-21'), category: 'Thommo Charity', credit: 1478, debit: 0 },
+    { id: 'current', transactionDate: day('2025-10-24'), category: 'Thommo Charity', credit: 153, debit: 0 },
+  ];
+  const result = reportCharity([], history, day('2025-11-01'), day('2026-11-01'));
+  assert.equal(result.opening, 15300);
+  assert.equal(result.closing, 15300);
 });

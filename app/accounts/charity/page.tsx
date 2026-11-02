@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { invoiceUser } from "@/lib/invoice-auth";
 import { prisma } from "@/lib/prisma";
 import { money, dateText, todayUK } from "@/lib/invoices";
-import { charityBalance, toPence } from "@/lib/charity-ledger";
+import { charityBalance, charityCategoryEntries, toPence } from "@/lib/charity-ledger";
 import { AllocateCategorisedForm, AllocateForm, ContributionForm, RemoveForm } from "./CharityForms";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +15,8 @@ export default async function CharityPage() {
   ]);
   const todayEnd = new Date(todayUK() + "T00:00:00.000Z"); todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
   const yearEnd = new Date("2026-11-01T00:00:00.000Z");
+  const automatic = charityCategoryEntries(entries, bank);
+  const allForBalance = [...entries, ...automatic.inferred];
   const unmatched = bank.filter(t => t.category.trim().toLowerCase() === "thommo charity" && !t.charityEntries.length);
   const eligibleCategorised = unmatched.filter(t => toPence(t.credit) > 0 && toPence(t.debit) === 0 && t.invoicePayments.length === 0);
   function choices(direction: "RECEIPT" | "COST" | "PAYMENT") {
@@ -28,10 +30,10 @@ export default async function CharityPage() {
     <p className="mt-6 text-sm font-semibold uppercase tracking-wide text-slate-500">Men&apos;s account · Treasurer</p>
     <h1 className="mt-2 text-3xl font-bold">Thommo&apos;s Charity</h1>
     <p className="mt-2 text-slate-600">Record the charity portion of existing bank transactions and track the amount payable. The £83 Awards Night contribution is included from 27 October 2026.</p>
-    <div className="mt-6 grid gap-4 md:grid-cols-2"><section className="rounded-xl bg-white p-5"><p className="text-sm text-slate-500">Recorded payable today</p><p className="mt-1 text-3xl font-bold text-emerald-700">{money(charityBalance(entries, todayEnd))}</p></section><section className="rounded-xl bg-white p-5"><p className="text-sm text-slate-500">Recorded payable at 31 October 2026</p><p className="mt-1 text-3xl font-bold text-slate-900">{money(charityBalance(entries, yearEnd))}</p></section></div>
-    <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Check the fundraising receipts:</strong> only amounts allocated below are included in the balance. {unmatched.length} bank transaction{unmatched.length === 1 ? " is" : "s are"} categorised as Thommo Charity but not yet allocated. Review the bank history for other relevant receipts too.
+    <div className="mt-6 grid gap-4 md:grid-cols-2"><section className="rounded-xl bg-white p-5"><p className="text-sm text-slate-500">Recorded payable today</p><p className="mt-1 text-3xl font-bold text-emerald-700">{money(charityBalance(allForBalance, todayEnd))}</p></section><section className="rounded-xl bg-white p-5"><p className="text-sm text-slate-500">Recorded payable at 31 October 2026</p><p className="mt-1 text-3xl font-bold text-slate-900">{money(charityBalance(allForBalance, yearEnd))}</p></section></div>
+    <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><strong>Check the fundraising receipts:</strong> bank transactions categorised Thommo Charity are included automatically. {automatic.review.length} transaction{automatic.review.length === 1 ? " needs" : "s need"} review because of a removed or conflicting allocation. Review other sources of charity funds too.
       <AllocateCategorisedForm ids={eligibleCategorised.map(t => t.id)} amountPence={eligibleCategorised.reduce((sum, t) => sum + toPence(t.credit), 0)} amount={money(eligibleCategorised.reduce((sum, t) => sum + toPence(t.credit), 0))} />
-      <p className="mt-2 text-xs">This allocates the full amount of each eligible receipt. Already allocated receipts are excluded.</p>
+      <p className="mt-2 text-xs">These receipts are already included in the balance. Allocation creates an explicit record; it does not add them again.</p>
     </div>
     <div className="mt-6 grid gap-4 md:grid-cols-2"><AllocateForm type="RECEIPT" options={choices("RECEIPT")} /><AllocateForm type="COST" options={choices("COST")} /><AllocateForm type="PAYMENT" options={choices("PAYMENT")} /></div>
     <ContributionForm today={todayUK()} />

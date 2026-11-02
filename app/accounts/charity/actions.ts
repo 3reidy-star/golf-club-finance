@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { invoiceUser } from "@/lib/invoice-auth";
 import { prisma } from "@/lib/prisma";
 import { parseDate, parsePence } from "@/lib/invoices";
-import { toPence, validateTimeline } from "@/lib/charity-ledger";
+import { charityCategoryEntries, toPence, validateTimeline } from "@/lib/charity-ledger";
 
 export type State = { error?: string; success?: string };
 function refresh() {
@@ -34,9 +34,11 @@ export async function allocateCharity(_state: State, formData: FormData): Promis
       if ((type === "RECEIPT" && (credit <= 0 || debit !== 0)) || ((type === "PAYMENT" || type === "COST") && (debit <= 0 || credit !== 0))) throw new Error("Choose a matching money-in or money-out transaction.");
       const maximum = (type === "RECEIPT" ? credit : debit) - bank.invoicePayments.reduce((n, item) => n + item.amountPence, 0);
       if (amountPence > maximum) throw new Error("Amount exceeds the unallocated bank transaction.");
-      const all = await tx.charityEntry.findMany({ where: { accountCode: "MENS", removedAt: null } });
+      const all = await tx.charityEntry.findMany({ where: { accountCode: "MENS" } });
+      const bankRows = await tx.accountTransaction.findMany({ where: { accountCode: "MENS", category: { equals: "Thommo Charity", mode: "insensitive" } }, include: { invoicePayments: { where: { removedAt: null }, select: { amountPence: true } } } });
       const entry = { accountCode: "MENS" as const, type: type as "RECEIPT" | "COST" | "PAYMENT", effectiveDate: bank.transactionDate, amountPence, description: bank.description, transactionId: bank.id, recordedById: user.id };
-      validateTimeline([...all, { ...entry, removedAt: null }]);
+      const next = [...all, { ...entry, removedAt: null }];
+      validateTimeline([...next, ...charityCategoryEntries(next, bankRows).inferred]);
       await tx.charityEntry.create({ data: entry });
     }, { isolationLevel: "Serializable" });
   } catch (error) { return fail(error); }
@@ -86,8 +88,10 @@ export async function removeCharityAllocation(_state: State, formData: FormData)
     await prisma.$transaction(async tx => {
       const entry = await tx.charityEntry.findUnique({ where: { id } });
       if (!entry || entry.removedAt) throw new Error("Active charity entry not found.");
-      const all = await tx.charityEntry.findMany({ where: { accountCode: "MENS", removedAt: null, id: { not: id } } });
-      validateTimeline(all);
+      const all = await tx.charityEntry.findMany({ where: { accountCode: "MENS" } });
+      const bankRows = await tx.accountTransaction.findMany({ where: { accountCode: "MENS", category: { equals: "Thommo Charity", mode: "insensitive" } }, include: { invoicePayments: { where: { removedAt: null }, select: { amountPence: true } } } });
+      const next = all.map(item => item.id === id ? { ...item, removedAt: new Date() } : item);
+      validateTimeline([...next, ...charityCategoryEntries(next, bankRows).inferred]);
       await tx.charityEntry.update({ where: { id }, data: { removedAt: new Date(), removedById: user.id, removalReason: reason } });
     }, { isolationLevel: "Serializable" });
   } catch (error) { return fail(error); }

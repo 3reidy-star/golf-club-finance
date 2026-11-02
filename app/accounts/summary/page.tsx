@@ -42,6 +42,7 @@ export default async function AccountsSummaryPage({
   const accounts = await prisma.financeAccount.findMany({
     include: {
       transactions: {
+        include: { invoicePayments: { where: { removedAt: null }, select: { amountPence: true } } },
         orderBy: { transactionDate: "asc" },
       },
     },
@@ -160,18 +161,8 @@ export default async function AccountsSummaryPage({
 
         <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
           <h2 className="text-lg font-bold text-emerald-950">AGM annual accounts PDFs</h2>
-          <p className="mt-1 text-sm text-emerald-900">The 2026 AGM year runs from 1 November 2025 to 31 October 2026.</p>
-          <form action="/accounts/annual-pdf" method="get" className="mt-4 space-y-3">
-            <input type="hidden" name="account" value="MENS" /><input type="hidden" name="year" value="2026" />
-            <p className="text-sm text-emerald-900">Optional provisional charity estimate: these figures were supplied on 29 October and may have changed. Review them before downloading. They are not saved or added to the recorded charity ledger.</p>
-            <div className="flex flex-wrap gap-4">
-              <label className="text-sm font-medium text-emerald-950">Charity income (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="charityIncome" type="number" min="0" step="0.01" defaultValue="9563.32" required /></label>
-              <label className="text-sm font-medium text-emerald-950">Charity costs (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="charityCosts" type="number" min="0" step="0.01" defaultValue="1109.07" required /></label>
-              <label className="text-sm font-medium text-emerald-950">Awards allocation (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="awardsAllocation" type="number" min="0" step="0.01" defaultValue="83.00" required /></label>
-            </div>
-            <button className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s 2026 PDF with estimate</button>
-          </form>
-          <div className="mt-4 flex flex-wrap gap-3"><a href="/accounts/annual-pdf?account=MENS&year=2026" className="rounded-lg border border-emerald-900 px-4 py-2 text-sm font-semibold text-emerald-900">Download without estimate</a><a href="/accounts/annual-pdf?account=CLUB&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club 2026 PDF</a></div>
+          <p className="mt-1 text-sm text-emerald-900">The AGM year runs from 1 November to 31 October. Thommo&apos;s Charity is shown as a liability based on recorded transactions.</p>
+          <div className="mt-4 flex flex-wrap gap-3"><a href={`/accounts/annual-pdf?account=MENS&year=${year}`} className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s {year} PDF</a><a href={`/accounts/annual-pdf?account=CLUB&year=${year}`} className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club {year} PDF</a></div>
         </section>
 
         <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -182,7 +173,7 @@ export default async function AccountsSummaryPage({
         {showCharity && <section className="mt-6 rounded-xl border border-emerald-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Thommo&apos;s Charity</h2><p className="mt-1 text-sm text-slate-600">AGM year: 1 November {year - 1} to 31 October {year}.</p></div><a href="/accounts/charity" className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white">Manage charity allocations</a></div>
           <div className="mt-4 grid gap-4 sm:grid-cols-3"><div><p className="text-sm text-slate-500">Section contribution in AGM year</p><p className="text-xl font-bold">{money(pounds(charity.contribution))}</p></div><div><p className="text-sm text-slate-500">Recorded payable at 31 October</p><p className="text-xl font-bold">{money(pounds(charity.closing))}</p></div><div><p className="text-sm text-slate-500">{allCashEntered ? "Bank and cash less recorded charity amount" : "Bank less recorded charity (cash not entered)"}</p><p className="text-xl font-bold">{money(agmBankBalance + (allCashEntered ? pounds(agmCashPence) : 0) - pounds(charity.closing))}</p></div></div>
-          <p className="mt-4 text-sm text-amber-800">The balance includes only amounts allocated to the charity ledger. {charity.unmatched.length} bank transaction{charity.unmatched.length === 1 ? " is" : "s are"} categorised Thommo Charity but not allocated; check for other fundraising too. The bank figures below remain cash movements.</p>
+          <p className="mt-4 text-sm text-amber-800">Thommo Charity bank transactions are included automatically, alongside any separate charity allocations. {charity.review.length} transaction{charity.review.length === 1 ? " needs" : "s need"} review. Check for charity funds received elsewhere. The bank figures below remain cash movements.</p>
         </section>}
 
         {allTransactions.length === 0 ? (
