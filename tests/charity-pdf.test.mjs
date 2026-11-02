@@ -65,7 +65,9 @@ test('cash is included in the net balance and missing counts remain visible', as
   const path = '/tmp/golf-cash-check-2026.pdf'; writeFileSync(path, response.body);
   const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
   assert.match(text, /Cash\s+£123\.45/);
-  assert.match(text, /Net balance\s+£1,540\.45/);
+  assert.match(text, /Junior money\s+£148\.28/);
+  assert.match(text, /Less junior money\s+-£148\.28/);
+  assert.match(text, /Net balance\s+£1,392\.17/);
 });
 test('club accounts do not reclassify mens charity categories', async () => {
   const response = await route()({ url: 'https://example.test/accounts/annual-pdf?account=CLUB&year=2026' });

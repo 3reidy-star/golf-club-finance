@@ -8,6 +8,8 @@ export const dynamic = "force-dynamic";
 const pennies = (n: unknown) => Math.round(Number(n) * 100);
 const money = (pence: number) => `${pence < 0 ? "-" : ""}£${(Math.abs(pence) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const period = (date: Date) => date.toLocaleDateString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" }).replace(" ", "-");
+// Confirmed balances from the 2025 AGM statement and the 2026 year-end count.
+const juniorYearEndPence: Record<number, number> = { 2025: 210795, 2026: 14828 };
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -28,6 +30,8 @@ export async function GET(request: Request) {
   const bankMovement = rows.reduce((n, t) => n + pennies(t.credit) - pennies(t.debit), 0);
   const closingBank = openingBank + bankMovement;
   const charity = reportCharity(charityEntries, code === "MENS" ? account.transactions : [], start, end);
+  const juniorOpening = code === "MENS" ? juniorYearEndPence[year - 1] : undefined;
+  const juniorClosing = code === "MENS" ? juniorYearEndPence[year] : undefined;
   const categories = new Map<string, { income: number; expense: number }>();
   for (const t of rows) { const v = categories.get(t.category) ?? { income: 0, expense: 0 }; v.income += pennies(t.credit); v.expense += pennies(t.debit); categories.set(t.category, v); }
   for (const [name, change] of charity.adjustments) {
@@ -77,17 +81,20 @@ export async function GET(request: Request) {
   row("Carried Forward - bank", openingBank);
   row("Cash", previousCash?.amountPence ?? null);
   if (code === "MENS" && charity.opening) row("Less Thommo's Charity brought forward", -charity.opening);
-  row("Net Opening Balance", previousCash ? openingBank + previousCash.amountPence - (code === "MENS" ? charity.opening : 0) : null, true, true);
+  if (juniorOpening !== undefined) row("Less junior money brought forward", -juniorOpening);
+  row("Net Opening Balance", previousCash && (code !== "MENS" || juniorOpening !== undefined) ? openingBank + previousCash.amountPence - (code === "MENS" ? charity.opening : 0) - (juniorOpening ?? 0) : null, true, true);
   section("Income", income, totalIn);
   section("Expenses", expense, totalOut);
   y -= 5; bar("Creditors");
   if (code === "MENS") row("Thommo's Charity", charity.closing);
   else row("Other creditors: not assessed", undefined);
+  if (code === "MENS") row("Junior money", juniorClosing ?? null);
   y -= 5; bar("Debtors"); row("Not assessed", undefined);
   y -= 5; bar("Closing Balance"); row("Account", closingBank); row("Cash", currentCash?.amountPence ?? null);
   if (code === "MENS") row("Less Thommo's Charity", -charity.closing);
+  if (code === "MENS") row("Less junior money", juniorClosing === undefined ? null : -juniorClosing);
   y -= 5; bar("Carried Forward");
-  row("Net balance", currentCash ? closingBank + currentCash.amountPence - (code === "MENS" ? charity.closing : 0) : null, false, true);
+  row("Net balance", currentCash && (code !== "MENS" || juniorClosing !== undefined) ? closingBank + currentCash.amountPence - (code === "MENS" ? charity.closing : 0) - (juniorClosing ?? 0) : null, false, true);
   y -= 4; room(30);
   if (!previousCash || !currentCash) { label("Cash must be entered before the corresponding net balance can be calculated.", left + 3, y - fontSize, Math.max(7, fontSize - 0.5)); y -= rowH; }
   if (code === "MENS") {
