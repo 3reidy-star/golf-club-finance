@@ -43,6 +43,16 @@ export async function saveTransactionCategories(formData: FormData) {
   const visibleIds = formData.getAll("visibleTransactionId").map(String).filter(Boolean);
   const reconciledIds = new Set(formData.getAll("reconciledTransaction").map(String).filter(Boolean));
   const categoryUpdates: Array<{ id: string; category: string }> = [];
+  const dateUpdates: Array<{ id: string; date: Date; original: string }> = [];
+  for (const id of visibleIds) {
+    if (deleteIdSet.has(id)) continue;
+    const value = String(formData.get(`date:${id}`) ?? "");
+    const original = String(formData.get(`originalDate:${id}`) ?? "");
+    if (!value || value === original) continue;
+    const date = new Date(`${value}T00:00:00.000Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value) throw new Error("Enter a valid transaction date.");
+    dateUpdates.push({ id, date, original });
+  }
 
   for (const [key, value] of formData.entries()) {
     if (!key.startsWith("category:")) continue;
@@ -52,6 +62,12 @@ export async function saveTransactionCategories(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    for (const update of dateUpdates) {
+      const existing = await tx.accountTransaction.findUnique({ where: { id: update.id }, include: { charityEntries: true, invoicePayments: true } });
+      if (!existing || existing.transactionDate.toISOString().slice(0, 10) !== update.original) throw new Error("The transaction changed. Refresh the page and try again.");
+      if (existing.charityEntries.length || existing.invoicePayments.length) throw new Error("This transaction has allocation history. Its date cannot be changed here; review its allocations first.");
+      await tx.accountTransaction.update({ where: { id: update.id }, data: { transactionDate: update.date } });
+    }
     if (deleteIds.length && await tx.charityEntry.count({ where: { transactionId: { in: deleteIds } } })) throw new Error("A selected transaction has charity allocation history and cannot be deleted.");
     if (deleteIds.length && await tx.invoicePayment.count({ where: { transactionId: { in: deleteIds } } })) {
       throw new Error("A selected transaction has invoice payment history and cannot be deleted. Keep it for the audit trail.");
@@ -66,5 +82,6 @@ export async function saveTransactionCategories(formData: FormData) {
   revalidatePath("/accounts", "page");
   revalidatePath("/accounts/summary", "page");
   revalidatePath("/accounts/import", "page");
+  revalidatePath("/accounts/charity", "page");
   redirect(returnTo);
 }
