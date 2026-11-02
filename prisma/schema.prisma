@@ -277,6 +277,7 @@ model AccountTransaction {
   category        String
   reconciled      Boolean             @default(false)
   invoicePayments InvoicePayment[]
+  charityEntries  CharityEntry[]
   sourceKey       String              @unique
   importBatchId   String?
   importBatch     AccountImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
@@ -403,4 +404,31 @@ model AccountCategory {
   name String
   nameKey String @unique
   createdAt DateTime @default(now())
+}
+
+
+enum CharityEntryType {
+  CONTRIBUTION
+  RECEIPT
+  COST
+  PAYMENT
+}
+
+model CharityEntry {
+  id            String           @id @default(cuid())
+  accountCode   AccountCode
+  type          CharityEntryType
+  effectiveDate DateTime
+  amountPence   Int
+  description   String
+  transactionId String?
+  transaction   AccountTransaction? @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+  recordedById  String?
+  createdAt     DateTime @default(now())
+  removedAt     DateTime?
+  removedById   String?
+  removalReason String?
+
+  @@index([accountCode, effectiveDate])
+  @@index([transactionId])
 }

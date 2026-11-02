@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getAccountCategories } from "@/lib/account-categories";
+import { reportCharity, pounds } from "@/lib/charity-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export default async function AccountsSummaryPage({
     })),
   );
 
+  const charityEntries = await prisma.charityEntry.findMany({ where: { accountCode: "MENS" } });
   const start = new Date(Date.UTC(year, 0, 1));
   const end = new Date(Date.UTC(year + 1, 0, 1));
 
@@ -81,6 +83,13 @@ export default async function AccountsSummaryPage({
     const debit = rows.reduce((total, row) => total + Number(row.debit), 0);
     return { category, credit, debit, net: credit - debit };
   }).filter((row) => row.credit !== 0 || row.debit !== 0 || row.category === "Uncategorised");
+
+  const mensTransactions = allTransactions.filter(row => row.accountCode === "MENS");
+  const agmStart = new Date(Date.UTC(year - 1, 10, 1));
+  const agmEnd = new Date(Date.UTC(year, 10, 1));
+  const charity = reportCharity(charityEntries, mensTransactions, agmStart, agmEnd);
+  const agmBankBalance = relevantAccounts.reduce((sum, account) => sum + Number(account.openingBalance) + account.transactions.filter(row => row.transactionDate < agmEnd).reduce((movement, row) => movement + Number(row.credit) - Number(row.debit), 0), 0);
+  const showCharity = accountFilter !== "CLUB";
 
   const totalCredit = yearTransactions.reduce((total, row) => total + Number(row.credit), 0);
   const totalDebit = yearTransactions.reduce((total, row) => total + Number(row.debit), 0);
@@ -144,7 +153,27 @@ export default async function AccountsSummaryPage({
           </form>
         </section>
 
-        <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5"><h2 className="text-lg font-bold text-emerald-950">AGM annual accounts PDFs</h2><p className="mt-1 text-sm text-emerald-900">The 2026 AGM year runs from 1 November 2025 to 31 October 2026. Each export uses its own account transactions and category totals.</p><div className="mt-4 flex flex-wrap gap-3"><a href="/accounts/annual-pdf?account=MENS&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s 2026 PDF</a><a href="/accounts/annual-pdf?account=CLUB&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club 2026 PDF</a></div></section>
+        <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
+          <h2 className="text-lg font-bold text-emerald-950">AGM annual accounts PDFs</h2>
+          <p className="mt-1 text-sm text-emerald-900">The 2026 AGM year runs from 1 November 2025 to 31 October 2026.</p>
+          <form action="/accounts/annual-pdf" method="get" className="mt-4 space-y-3">
+            <input type="hidden" name="account" value="MENS" /><input type="hidden" name="year" value="2026" />
+            <p className="text-sm text-emerald-900">Optional provisional charity estimate: these figures were supplied on 29 October and may have changed. Review them before downloading. They are not saved or added to the recorded charity ledger.</p>
+            <div className="flex flex-wrap gap-4">
+              <label className="text-sm font-medium text-emerald-950">Charity income (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="charityIncome" type="number" min="0" step="0.01" defaultValue="9563.32" required /></label>
+              <label className="text-sm font-medium text-emerald-950">Charity costs (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="charityCosts" type="number" min="0" step="0.01" defaultValue="1109.07" required /></label>
+              <label className="text-sm font-medium text-emerald-950">Awards allocation (£)<input className="mt-1 block w-36 rounded border border-slate-300 px-2 py-1" name="awardsAllocation" type="number" min="0" step="0.01" defaultValue="83.00" required /></label>
+            </div>
+            <button className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s 2026 PDF with estimate</button>
+          </form>
+          <div className="mt-4 flex flex-wrap gap-3"><a href="/accounts/annual-pdf?account=MENS&year=2026" className="rounded-lg border border-emerald-900 px-4 py-2 text-sm font-semibold text-emerald-900">Download without estimate</a><a href="/accounts/annual-pdf?account=CLUB&year=2026" className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club 2026 PDF</a></div>
+        </section>
+
+        {showCharity && <section className="mt-6 rounded-xl border border-emerald-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Thommo&apos;s Charity</h2><p className="mt-1 text-sm text-slate-600">AGM year: 1 November {year - 1} to 31 October {year}.</p></div><a href="/accounts/charity" className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white">Manage charity allocations</a></div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-3"><div><p className="text-sm text-slate-500">Section contribution in AGM year</p><p className="text-xl font-bold">{money(pounds(charity.contribution))}</p></div><div><p className="text-sm text-slate-500">Recorded payable at 31 October</p><p className="text-xl font-bold">{money(pounds(charity.closing))}</p></div><div><p className="text-sm text-slate-500">Bank balance less recorded charity amount</p><p className="text-xl font-bold">{money(agmBankBalance - pounds(charity.closing))}</p></div></div>
+          <p className="mt-4 text-sm text-amber-800">The balance includes only amounts allocated to the charity ledger. {charity.unmatched.length} bank transaction{charity.unmatched.length === 1 ? " is" : "s are"} categorised Thommo Charity but not allocated; check for other fundraising too. The bank figures below remain cash movements.</p>
+        </section>}
 
         {allTransactions.length === 0 ? (
           <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-6">

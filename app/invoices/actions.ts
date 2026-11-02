@@ -84,10 +84,10 @@ export async function changeInvoice(_state: InvoiceState, data: FormData): Promi
           if (already.invoiceId === id && already.transactionId === transactionId && already.amountPence === amountPence) return;
           throw new Error("Payment request already used. Refresh and try again.");
         }
-        const bank = await tx.accountTransaction.findUnique({ where: { id: transactionId }, include: { invoicePayments: { where: { removedAt: null } } } });
+        const bank = await tx.accountTransaction.findUnique({ where: { id: transactionId }, include: { invoicePayments: { where: { removedAt: null } }, charityEntries: { where: { removedAt: null } } } });
         if (!bank) throw new Error("Bank receipt not found.");
         const paidPence = invoice.payments.filter(p => !p.removedAt).reduce((n, p) => n + p.amountPence, 0);
-        validateAllocation({ ...invoice, paidPence }, { accountCode: bank.accountCode, creditPence: Math.round(Number(bank.credit) * 100), debitPence: Math.round(Number(bank.debit) * 100), allocatedPence: bank.invoicePayments.reduce((n, p) => n + p.amountPence, 0) }, amountPence);
+        validateAllocation({ ...invoice, paidPence }, { accountCode: bank.accountCode, creditPence: Math.round(Number(bank.credit) * 100), debitPence: Math.round(Number(bank.debit) * 100), allocatedPence: bank.invoicePayments.reduce((n, p) => n + p.amountPence, 0) + bank.charityEntries.reduce((n, p) => n + p.amountPence, 0) }, amountPence);
         await tx.invoicePayment.create({ data: { id: requestId, invoiceId: id, transactionId, amountPence, recordedById: user.id } });
       } else if (operation === "remove-payment") {
         const paymentId = text(data, "paymentId", 100, true), reason = text(data, "reason", 500, true);

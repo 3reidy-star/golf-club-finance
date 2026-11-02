@@ -24,8 +24,9 @@ export async function saveTransactionCategories(formData: FormData) {
 
   if (swapTransactionId) {
     await prisma.$transaction(async (tx) => {
-      const transaction = await tx.accountTransaction.findUnique({ where: { id: swapTransactionId }, include: { invoicePayments: { where: { removedAt: null } } } });
+      const transaction = await tx.accountTransaction.findUnique({ where: { id: swapTransactionId }, include: { invoicePayments: { where: { removedAt: null } }, charityEntries: true } });
       if (!transaction) throw new Error("Transaction not found.");
+      if (transaction.charityEntries.length) throw new Error("A transaction with charity allocation history cannot be swapped.");
       if (transaction.invoicePayments.length) throw new Error("Remove this receipt's invoice allocations before swapping money in/out.");
       const credit = Number(transaction.credit), debit = Number(transaction.debit);
       if (credit > 0 && debit === 0) await tx.accountTransaction.update({ where: { id: swapTransactionId }, data: { credit: 0, debit: credit } });
@@ -51,6 +52,7 @@ export async function saveTransactionCategories(formData: FormData) {
   }
 
   await prisma.$transaction(async (tx) => {
+    if (deleteIds.length && await tx.charityEntry.count({ where: { transactionId: { in: deleteIds } } })) throw new Error("A selected transaction has charity allocation history and cannot be deleted.");
     if (deleteIds.length && await tx.invoicePayment.count({ where: { transactionId: { in: deleteIds } } })) {
       throw new Error("A selected transaction has invoice payment history and cannot be deleted. Keep it for the audit trail.");
     }

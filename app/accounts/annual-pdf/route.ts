@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { reportCharity } from "@/lib/charity-ledger";
 
 export const dynamic = "force-dynamic";
 const ink = rgb(0.09,0.16,0.20);
@@ -26,11 +27,33 @@ export async function GET(request:Request) {
  if (!account) return new NextResponse("Account not found",{status:404});
  const opening = pennies(account.openingBalance)+account.transactions.filter(t=>t.transactionDate<start).reduce((n,t)=>n+pennies(t.credit)-pennies(t.debit),0);
  const rows = account.transactions.filter(t=>t.transactionDate>=start);
+ const charityEntries = code === "MENS" ? await prisma.charityEntry.findMany({ where: { accountCode: "MENS" } }) : [];
+ const charity = reportCharity(charityEntries, account.transactions, start, end);
+ const cashIn = rows.reduce((n,t)=>n+pennies(t.credit),0), cashOut = rows.reduce((n,t)=>n+pennies(t.debit),0);
+ const cashClosing = opening + cashIn - cashOut;
  const categories = new Map<string,{income:number;expense:number}>();
  for(const t of rows){const v=categories.get(t.category)??{income:0,expense:0};v.income+=pennies(t.credit);v.expense+=pennies(t.debit);categories.set(t.category,v);}
+ for (const [name,change] of charity.adjustments) {
+   const value = categories.get(name);
+   if (!value) throw new Error("Charity allocation has no matching transaction in the reporting period.");
+   value.income += change.income; value.expense += change.expense;
+ }
+ if (charity.contribution) {
+   const value = categories.get("Charity contribution") ?? {income:0,expense:0};
+   value.expense += charity.contribution; categories.set("Charity contribution", value);
+ }
  const income=[...categories].filter(([,v])=>v.income).map(([name,v])=>({name,amount:v.income})).sort((a,b)=>b.amount-a.amount);
  const expense=[...categories].filter(([,v])=>v.expense).map(([name,v])=>({name,amount:v.expense})).sort((a,b)=>b.amount-a.amount);
  const totalIn=income.reduce((n,v)=>n+v.amount,0),totalOut=expense.reduce((n,v)=>n+v.amount,0);
+ const estimateKeys = ["charityIncome", "charityCosts", "awardsAllocation"];
+ const estimateRequested = code === "MENS" && year === 2026 && estimateKeys.some(key => params.has(key));
+ let charityEstimate: number[] | null = null;
+ if (estimateRequested) {
+   const raw = estimateKeys.map(key => params.get(key) ?? "");
+   if (raw.some(value => !/^\d{1,9}(?:\.\d{1,2})?$/.test(value))) return new NextResponse("Invalid charity estimate", {status:400});
+   charityEstimate = raw.map(value => Math.round(Number(value) * 100));
+   if (charityEstimate[1] > charityEstimate[0] + charityEstimate[2]) return new NextResponse("Charity costs exceed the amount raised", {status:400});
+ }
  const pdf=await PDFDocument.create();
  const normal=await pdf.embedFont(StandardFonts.Helvetica),bold=await pdf.embedFont(StandardFonts.HelveticaBold);
  const W=595.28,H=841.89;
@@ -81,9 +104,20 @@ export async function GET(request:Request) {
  section2("Income",income.map(x=>({name:x.name,amount:x.amount})),totalIn);
  section2("Expenditure",expense.map(x=>({name:x.name,amount:x.amount})),totalOut);
  room(116);
- section2("Closing position",[{name:"Opening balance",amount:opening},{name:"Net movement",amount:totalIn-totalOut}],opening+totalIn-totalOut);
- room(38);label("CLOSING BALANCE / CARRIED FORWARD",70,y-12,10,true,green);right(money(opening+totalIn-totalOut),y-12,12,true,green);y-=30;
- room(55);label("Prepared from recorded bank transactions. Cash, debtors, creditors and",64,y-8,8,false,grey);label("restricted funds should be reviewed separately for the AGM.",64,y-22,8,false,grey);
+ section2("Closing bank position",[{name:"Opening bank balance",amount:opening},{name:"Net bank movement",amount:cashIn-cashOut}],cashClosing);
+ if (code === "MENS") {
+   section2("Recorded charity payable",[{name:"Opening charity balance",amount:charity.opening},{name:"Change in recorded charity balance",amount:charity.closing-charity.opening}],charity.closing);
+   section2("Bank less recorded charity",[{name:"Closing bank balance",amount:cashClosing},{name:"Less recorded charity payable",amount:-charity.closing}],cashClosing-charity.closing);
+   if (charityEstimate) {
+     const [incomeEstimate,costEstimate,awardsEstimate] = charityEstimate;
+     section2("Charity estimate - manual",[{name:"Charity income",amount:incomeEstimate},{name:"Awards Night contribution",amount:awardsEstimate},{name:"Less charity costs",amount:-costEstimate}],incomeEstimate+awardsEstimate-costEstimate);
+     room(52);label("Provisional estimate: user-entered figures, not saved or added to the",64,y-8,8,false,grey);label("recorded payable above. Update and verify all costs before issue.",64,y-22,8,false,grey);y-=38;
+   }
+   room(60);label("Charity payable includes only amounts allocated to the charity ledger.",64,y-8,8,false,grey);
+   label(`Unallocated Thommo Charity bank transactions to review: ${charity.unmatched.length}.`,64,y-22,8,false,grey);
+   label("Check for other charity receipts and obtain year-end accounts approval.",64,y-36,8,false,grey);y-=50;
+ }
+ room(55);label("Bank balances are cash movements. Other assets and liabilities",64,y-8,8,false,grey);label("should be reviewed separately for the AGM.",64,y-22,8,false,grey);
  footerText();
  const bytes=await pdf.save();
  return new NextResponse(Buffer.from(bytes),{headers:{"Content-Type":"application/pdf","Content-Disposition":'attachment; filename="the-essex-'+code.toLowerCase()+'-annual-accounts-'+year+'.pdf"',"Cache-Control":"private, no-store"}});
