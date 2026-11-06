@@ -48,6 +48,7 @@ export default auth((request) => {
   if (role === "SECTION_USER") {
     if (
       pathname === "/payouts/new" || pathname.startsWith("/payouts/new/") ||
+      pathname === "/payouts/section-payments" ||
       pathname === "/payouts/completed" || pathname.startsWith("/payouts/completed/")
     ) return NextResponse.next();
     return NextResponse.redirect(new URL("/payouts/new", request.nextUrl));

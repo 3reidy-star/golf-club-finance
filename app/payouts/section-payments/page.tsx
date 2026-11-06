@@ -1,3 +1,4 @@
+import { SectionCode } from "@prisma/client";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
@@ -10,17 +11,23 @@ const money = (pence: number) => new Intl.NumberFormat("en-GB", { style: "curren
 export default async function SectionPaymentsPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
-  if (!["ADMIN", "TREASURER"].includes(session.user.role)) redirect("/");
+  const isSectionUser = session.user.role === "SECTION_USER";
+  if (!isSectionUser && !["ADMIN", "TREASURER"].includes(session.user.role)) redirect("/");
+  const sectionCodes = session.user.sectionCodes.filter((code): code is SectionCode =>
+    Object.values(SectionCode).includes(code as SectionCode));
+  if (isSectionUser && sectionCodes.length === 0) redirect("/payouts/completed");
   const lines = await prisma.payoutTopUp.findMany({
-    where: { recipientType: "SECTION_ACCOUNT", OR: [
+    where: { recipientType: "SECTION_ACCOUNT",
+      ...(isSectionUser ? { completed: true, payoutRequest: { section: { code: { in: sectionCodes } } } } : {}),
+      OR: [
       { completed: false, payoutRequest: { status: "APPROVED" } },
-      { completed: true, sectionPaymentBatchId: { not: null } },
+      { completed: true },
     ] },
     include: { payoutRequest: { include: { section: true, competition: true } } },
     orderBy: [{ completedAt: "desc" }, { createdAt: "asc" }],
   });
   const pending = Map.groupBy(lines.filter(line => !line.completed), line => line.payoutRequest.sectionId);
-  const batches = Map.groupBy(lines.filter(line => line.completed), line => line.sectionPaymentBatchId!);
+  const batches = Map.groupBy(lines.filter(line => line.completed), line => `${line.payoutRequest.sectionId}:${line.sectionPaymentBatchId ?? line.id}`);
   const total = (items: typeof lines) => items.reduce((sum, line) => sum + Math.round(Number(line.amount) * 100), 0);
   function breakdown(items: typeof lines) {
     return <div className="mt-4 divide-y divide-slate-200">{items.map(line => <div key={line.id} className="flex justify-between gap-4 py-3 text-sm">
@@ -31,9 +38,10 @@ export default async function SectionPaymentsPage() {
     </div>)}</div>;
   }
   return <main className="min-h-screen bg-slate-100 p-6 md:p-10"><div className="mx-auto max-w-6xl">
-    <Link href="/" className="text-sm text-slate-600">← Dashboard</Link>
+    <Link href={isSectionUser ? "/payouts/completed" : "/"} className="text-sm text-slate-600">{isSectionUser ? "← Payout status" : "← Dashboard"}</Link>
     <h1 className="mt-6 text-3xl font-bold text-slate-900">Section Payments</h1>
-    <p className="mt-2 text-slate-600">Make one transfer per section, then record the payment reference against all included competitions.</p>
+    <p className="mt-2 text-slate-600">{isSectionUser ? "View payments to your section and expand each transfer to see the competitions and amounts included." : "Make one transfer per section, then record the payment reference against all included competitions."}</p>
+    {!isSectionUser && <>
     <div className="my-6 rounded-xl bg-emerald-900 p-6 text-white"><p>Total payable to all sections</p><p className="mt-1 text-3xl font-bold">{money(total(lines.filter(line => !line.completed)))}</p></div>
     <div className="space-y-5">{pending.size === 0 && <p className="rounded-xl bg-white p-6">No section payments waiting.</p>}
       {Array.from(pending, ([sectionId, items]) => {
@@ -47,8 +55,9 @@ export default async function SectionPaymentsPage() {
         </section>;
       })}
     </div>
+    </>}
     <h2 className="mb-4 mt-10 text-2xl font-bold">Completed section payments</h2>
-    <p className="mb-4 text-sm text-slate-600">Each payment retains its competition breakdown for reconciliation. Earlier payments remain in <Link href="/payouts/history" className="underline">Payout History</Link>.</p>
-    <div className="space-y-4">{batches.size === 0 && <p className="text-slate-500">No grouped payments recorded yet.</p>}{Array.from(batches, ([id, items]) => <details key={id} className="rounded-xl border border-slate-200 bg-white p-6"><summary className="cursor-pointer font-semibold">{items[0].payoutRequest.section.name} · {money(total(items))} · {items[0].completedAt?.toLocaleDateString("en-GB")} · {items[0].sectionPaymentReference}</summary>{breakdown(items)}</details>)}</div>
+    <p className="mb-4 text-sm text-slate-600">Each payment retains its competition breakdown for reconciliation. Payments recorded before grouped transfers were introduced appear individually.</p>
+    <div className="space-y-4">{batches.size === 0 && <p className="text-slate-500">No completed section payments recorded yet.</p>}{Array.from(batches, ([id, items]) => <details key={id} className="rounded-xl border border-slate-200 bg-white p-6"><summary className="cursor-pointer font-semibold">{items[0].payoutRequest.section.name} · {money(total(items))} · {items[0].completedAt?.toLocaleDateString("en-GB")} · {items[0].sectionPaymentReference ?? "No bank reference recorded"}</summary>{breakdown(items)}</details>)}</div>
   </div></main>;
 }
