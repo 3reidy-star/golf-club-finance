@@ -56,7 +56,7 @@ export default async function SectionPaymentsPage() {
       })}
     </div>
     </>}
-    <h2 className="mb-4 mt-10 text-2xl font-bold">Completed section payments</h2>
+    <div className="mt-10 flex flex-wrap items-center justify-between gap-3"><h2 className="text-2xl font-bold">Completed section payments</h2><a href="/payouts/section-payments/export" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700">Export breakdown (Excel CSV)</a></div>
     <p className="mb-4 text-sm text-slate-600">Each payment retains its competition breakdown for reconciliation. Payments recorded before grouped transfers were introduced appear individually.</p>
     <div className="space-y-4">{batches.size === 0 && <p className="text-slate-500">No completed section payments recorded yet.</p>}{Array.from(batches, ([id, items]) => <details key={id} className="rounded-xl border border-slate-200 bg-white p-6"><summary className="cursor-pointer font-semibold">{items[0].payoutRequest.section.name} · {money(total(items))} · {items[0].completedAt?.toLocaleDateString("en-GB")} · {items[0].sectionPaymentReference ?? "No bank reference recorded"}</summary>{breakdown(items)}</details>)}</div>
   </div></main>;
