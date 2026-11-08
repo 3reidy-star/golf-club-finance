@@ -10,7 +10,7 @@ export default async function Home() {
   const session = await auth();
 
   if (!session?.user) redirect("/login");
-  if (session.user.role === "SECTION_USER") redirect("/payouts/new");
+  if (session.user.role === "SECTION_USER") redirect("/payouts/section-payments");
   if (session.user.role === "TOPUP_ADMIN") redirect("/payouts/top-ups");
   if (session.user.role === "COMPETITIONS") redirect("/competitions");
 
