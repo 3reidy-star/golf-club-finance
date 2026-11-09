@@ -80,7 +80,7 @@ export async function renderAnnualPack(current: AnnualReport, summaryOnly = fals
   // Keep the handout to one page; full commentary is repeated with the notes.
   for (const value of wrap(narrative, R - L, 10).slice(0, 4)) { text(value, L, y, 10, false, grey); y -= 15; }
   if (current.issues.length) text(`Draft: ${current.issues.length} review item(s). See the reconciliation notes.`, L, 88, 9, true, amber);
-  else text("Prepared for AGM approval. Signatures are added when approved.", L, 88, 9, false, grey);
+
   if (!summaryOnly) {
     newPage("Revenue and expenditure", `1 November ${current.year - 1} to 31 October ${current.year}`);
     activityHeading();
@@ -93,8 +93,8 @@ export async function renderAnnualPack(current: AnnualReport, summaryOnly = fals
     if (current.code === "MENS") { row("Less Thommo's Charity brought forward", -current.charity.opening); row("Less junior money brought forward", current.juniorOpening === null ? null : -current.juniorOpening); } row("Net Opening Balance - recorded funds", current.openingFunds, true);
     section("Closing position"); row("Account - closing bank", current.closingBank); row("Cash", current.closingCash);
     if (current.code === "MENS") { row("Less Thommo's Charity", -current.charity.closing); row("Less junior money", current.juniorClosing === null ? null : -current.juniorClosing); } row("Net balance - available bank and cash", current.closingFunds, true);
-    section("Other assets and liabilities"); row("Debtors - amounts owed to the account", current.debtors); row("Other creditors - amounts owed by the account", current.otherCreditors); row("Net assets before stock", current.netAssetsBeforeStock, true);
-    paragraph("Stock is a non-cash asset and is shown separately in the notes. It is not added to available bank and cash. Charity and Juniors' funds are already deducted above.", 9);
+    section("Other assets and liabilities"); row("Debtors - amounts owed to the account", current.debtors); row("Other creditors - amounts owed by the account", current.otherCreditors); row(current.stockValue === null ? "Net assets" : "Net assets before stock", current.netAssetsBeforeStock, true);
+    if (current.stockValue !== null) paragraph("Stock is a non-cash asset and is shown separately in the notes. It is not added to available bank and cash. Charity and Juniors' funds are already deducted above.", 9);
     newPage("Reconciliation and notes");
     section("Bank reconciliation"); row("Opening bank balance", current.openingBank); row("Bank receipts during the year", current.credit); row("Bank payments during the year", -current.debit); row("Closing bank balance", current.closingBank, true);
     section("Movement in available funds"); row("Net opening recorded funds", current.openingFunds); row("Surplus / (deficit) per income and expenditure", current.surplus);
@@ -106,16 +106,15 @@ export async function renderAnnualPack(current: AnnualReport, summaryOnly = fals
     paragraph("These are management accounts on a recorded receipts-and-payments basis, with separately identified funds and year-end assets/liabilities. Opening balances are carried forward from the dated ledger.", 9);
     section("Review status");
     if (current.issues.length) current.issues.forEach(issue => paragraph(issue, 10, amber)); else paragraph("Cash, Juniors' funds and other debtors/creditors are recorded. No uncategorised or flagged charity transactions remain for this period.");
-    if (y < 300) newPage("Stock and AGM approval");
-    section("Stock held at year end");
-    if (current.stockValue === null) paragraph("Stock quantity and valuation have not yet been confirmed. No stock value has been added to these accounts. Enter the year-end stock count in the account review screen.", 10, amber);
-    else {
+    if (current.stockValue !== null) {
+      room(140, "Stock held at year end");
+      section("Stock held at year end");
       for (const item of current.stockItems) row(`${item.description} - ${item.quantity} x ${money(item.unitCostPence)}`, item.quantity * item.unitCostPence);
       row("Total stock value (non-cash)", current.stockValue, true);
       row("Net assets including separately valued stock", current.netAssetsBeforeStock === null ? null : current.netAssetsBeforeStock + current.stockValue, true);
     }
     if (current.commentary) { section("Treasurer's commentary - full text"); paragraph(current.commentary); }
-    section("AGM approval"); paragraph("Prepared for Craig Reid (Treasurer) and Paul Thompson (Captain) to review and sign at the AGM. The approved pack will retain their drawn signatures, AGM date and approval timestamp. This unsigned copy does not record an approval.");
+
   }
   const pages = pdf.getPages();
   for (let index = 0; index < pages.length; index++) {

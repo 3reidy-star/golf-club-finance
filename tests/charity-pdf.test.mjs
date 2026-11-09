@@ -57,6 +57,7 @@ async function document(year) {
 test('AGM statement shows the contribution and one charity liability', async () => {
   const text = await document(2026);
   assert.match(text, /Annual accounts - AGM summary/);
+  assert.doesNotMatch(text, /Stock quantity and valuation have not yet been confirmed|AGM APPROVAL|Prepared for Craig Reid/);
   assert.match(text, /Awards Night\s+£500\.00/);
   assert.match(text, /Charity contribution\s+£0\.00\s+£83\.00/);
   assert.match(text, /Less Thommo's Charity\s+-£183\.00/);

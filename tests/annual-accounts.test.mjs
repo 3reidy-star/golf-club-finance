@@ -50,3 +50,13 @@ test('activity comparison pairs related fees and costs and preserves both totals
  assert.equal(rows.reduce((sum,row)=>sum+row.expenditure,0),report.expense.reduce((sum,row)=>sum+row.amount,0));
  assert.ok(rows.find(row=>row.name==='Other'));
 });
+
+test('external debtor increases net assets without changing cash, revenue or the other account', () => {
+ const cash=[{year:2025,amountPence:0},{year:2026,amountPence:0}];
+ const before=calculateAnnualAccounts(account([]),2026,cash,[],reviews);
+ const after=calculateAnnualAccounts(account([]),2026,cash,[],[{...reviews[0],debtorsPence:30000}]);
+ assert.equal(after.netAssetsBeforeStock-before.netAssetsBeforeStock,30000);
+ assert.equal(after.closingBank,before.closingBank); assert.equal(after.closingFunds,before.closingFunds);
+ assert.equal(after.totalIncome,before.totalIncome); assert.equal(after.totalExpense,before.totalExpense);
+ assert.equal(calculateAnnualAccounts(account([]),2026,cash,[],reviews).otherCreditors,0);
+});
