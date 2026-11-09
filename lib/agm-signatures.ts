@@ -1,4 +1,5 @@
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument } from "pdf-lib";
+import { embedReportFont } from "./pdf-fonts";
 
 export function validateAgmDate(value: string, year: number) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Enter the AGM date.");
@@ -20,7 +21,7 @@ export async function signAnnualPdf(unsignedPdf: string, signatures: [string, st
     images.push(image);
   }
   const page = pdf.addPage([595.28, 841.89]);
-  const normal = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const normal = await embedReportFont(pdf), bold = normal;
   const text = (value: string, y: number, size = 11, strong = false) => page.drawText(value, { x: 55, y, size, font: strong ? bold : normal });
   text("AGM approval of annual accounts", 775, 18, true);
   text("The Essex Golf & Country Club", 745, 13);

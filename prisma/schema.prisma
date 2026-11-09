@@ -483,3 +483,27 @@ model AnnualAccountsApproval {
 
   @@index([accountCode, year, signedAt])
 }
+
+model AnnualAccountsReview {
+  id                  String      @id @default(cuid())
+  accountCode         AccountCode
+  year                Int
+  debtorsPence        Int?
+  otherCreditorsPence Int?
+  stockItems          Json        @default("[]")
+  stockConfirmed      Boolean     @default(false)
+  commentary          String      @default("")
+  version             Int         @default(1)
+  updatedById         String
+  updatedAt           DateTime    @updatedAt
+  @@unique([accountCode, year])
+}
+
+model AccountDateCorrection {
+  id            String   @id
+  transactionId String   @unique
+  originalDate  DateTime
+  correctedDate DateTime
+  reason        String
+  recordedAt    DateTime @default(now())
+}

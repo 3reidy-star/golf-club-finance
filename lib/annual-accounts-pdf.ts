@@ -1,99 +1,145 @@
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { prisma } from "@/lib/prisma";
-import { reportCharity } from "@/lib/charity-ledger";
+import { PDFDocument, rgb } from "pdf-lib";
+import { embedReportFont } from "./pdf-fonts";
+import { loadAnnualAccounts } from "./annual-accounts-data";
+import type { AnnualReport } from "./annual-accounts";
+const money = (value: number | null) => value === null ? "Not confirmed" : `${value < 0 ? "-" : ""}£${(Math.abs(value) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const pennies = (n: unknown) => Math.round(Number(n) * 100);
-const money = (pence: number) => `${pence < 0 ? "-" : ""}£${(Math.abs(pence) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const period = (date: Date) => date.toLocaleDateString("en-GB", { month: "short", year: "2-digit", timeZone: "UTC" }).replace(" ", "-");
-// Confirmed balances from the 2025 AGM statement and the 2026 year-end count.
-const juniorYearEndPence: Record<number, number> = { 2025: 210795, 2026: 14828 };
-
-export async function generateAnnualPdf(code: "MENS" | "CLUB", year: number) {
-  const start = new Date(Date.UTC(year - 1, 10, 1)), end = new Date(Date.UTC(year, 10, 1));
-  const [account, currentCash, previousCash, charityEntries] = await Promise.all([
-    prisma.financeAccount.findUnique({ where: { code }, include: { transactions: { where: { transactionDate: { lt: end } }, include: { invoicePayments: { where: { removedAt: null }, select: { amountPence: true } } }, orderBy: { transactionDate: "asc" } } } }),
-    prisma.cashYearEnd.findUnique({ where: { accountCode_year: { accountCode: code, year } } }),
-    prisma.cashYearEnd.findUnique({ where: { accountCode_year: { accountCode: code, year: year - 1 } } }),
-    code === "MENS" ? prisma.charityEntry.findMany({ where: { accountCode: "MENS" } }) : Promise.resolve([]),
-  ]);
-  if (!account) throw new Error("Account not found.");
-  const openingBank = pennies(account.openingBalance) + account.transactions.filter(t => t.transactionDate < start).reduce((n, t) => n + pennies(t.credit) - pennies(t.debit), 0);
-  const rows = account.transactions.filter(t => t.transactionDate >= start);
-  const bankMovement = rows.reduce((n, t) => n + pennies(t.credit) - pennies(t.debit), 0);
-  const closingBank = openingBank + bankMovement;
-  const charity = reportCharity(charityEntries, code === "MENS" ? account.transactions : [], start, end);
-  const juniorOpening = code === "MENS" ? juniorYearEndPence[year - 1] : undefined;
-  const juniorClosing = code === "MENS" ? juniorYearEndPence[year] : undefined;
-  const categories = new Map<string, { income: number; expense: number }>();
-  for (const t of rows) { const v = categories.get(t.category) ?? { income: 0, expense: 0 }; v.income += pennies(t.credit); v.expense += pennies(t.debit); categories.set(t.category, v); }
-  for (const [name, change] of charity.adjustments) {
-    const value = categories.get(name);
-    if (!value) throw new Error("Charity allocation has no matching transaction in the reporting period.");
-    value.income += change.income; value.expense += change.expense;
+export async function renderAnnualPack(current: AnnualReport, previous: AnnualReport, summaryOnly = false) {
+  const pdf = await PDFDocument.create();
+  pdf.setTitle(`The Essex - ${current.name} - Annual accounts ${current.year}`);
+  const normal = await embedReportFont(pdf), bold = normal;
+  const W = 595.28, H = 841.89, L = 48, R = W - L;
+  const navy = rgb(0.08, 0.18, 0.23), green = rgb(0.08, 0.35, 0.28), grey = rgb(0.40, 0.45, 0.46), pale = rgb(0.94, 0.96, 0.95), line = rgb(0.82, 0.86, 0.84), amber = rgb(0.56, 0.31, 0.06);
+  let page = pdf.addPage([W, H]), y = 700;
+  const clean = (value: string) => value.replace(/[–—]/g, "-").replace(/[’‘]/g, "'").replace(/[“”]/g, '"').replace(/[^\x20-\x7e£\n]/g, " ");
+  const text = (value: string, x: number, baseline: number, size = 10, strong = false, color = navy) => page.drawText(clean(value), { x, y: baseline, size, font: strong ? bold : normal, color });
+  function wrap(value: string, width: number, size = 10, strong = false) {
+    const font = strong ? bold : normal, lines: string[] = [];
+    for (const paragraph of clean(value).split("\n")) {
+      let current = "";
+      for (const word of paragraph.split(/\s+/)) {
+        if (font.widthOfTextAtSize(`${current} ${word}`, size) > width && current) { lines.push(current); current = word; }
+        else current = current ? `${current} ${word}` : word;
+      }
+      lines.push(current);
+    }
+    return lines;
   }
-  if (charity.contribution) { const value = categories.get("Charity contribution") ?? { income: 0, expense: 0 }; value.expense += charity.contribution; categories.set("Charity contribution", value); }
-  const income = [...categories].filter(([, v]) => v.income !== 0).map(([name, v]) => ({ name, amount: v.income })).sort((a, b) => b.amount - a.amount);
-  const expense = [...categories].filter(([, v]) => v.expense !== 0).map(([name, v]) => ({ name, amount: v.expense })).sort((a, b) => b.amount - a.amount);
-  const totalIn = income.reduce((n, v) => n + v.amount, 0), totalOut = expense.reduce((n, v) => n + v.amount, 0);
-
-  const pdf = await PDFDocument.create(), normal = await pdf.embedFont(StandardFonts.Helvetica), bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-  const W = 595.28, H = 841.89, left = 60, right = W - 60, grey = rgb(0.68, 0.68, 0.68), pale = rgb(0.90, 0.90, 0.90), ink = rgb(0.08, 0.08, 0.08);
-  // Match the supplied AGM statement, shrinking rows only as needed to keep
-  // ordinary annual statements on a page; unusually long ones continue safely.
-  const count = income.length + expense.length + 16;
-  const rowH = Math.min(12, Math.max(8.3, (H - 230) / Math.max(count, 1)));
-  const fontSize = Math.min(9, Math.max(7.2, rowH - 1.3));
-  let page = pdf.addPage([W, H]), y = H - 44, pageNumber = 1;
-  const label = (text: string, x: number, baseline: number, size = fontSize, strong = false) => page.drawText(text, { x, y: baseline, size, font: strong ? bold : normal, color: ink });
-  const rightText = (text: string, baseline: number, strong = false) => label(text, right - 4 - (strong ? bold : normal).widthOfTextAtSize(text, fontSize), baseline, fontSize, strong);
-  const center = (text: string, baseline: number, size: number, strong = false) => label(text, (W - (strong ? bold : normal).widthOfTextAtSize(text, size)) / 2, baseline, size, strong);
-  function newPage() { page = pdf.addPage([W, H]); pageNumber++; y = H - 40; center("Golf AGM Financial Statement (continued)", y, 12, true); y -= 24; }
-  function room(height: number) { if (y - height < 35) newPage(); }
-  function bar(text: string) { room(rowH + 5); page.drawRectangle({ x: left, y: y - rowH, width: right - left, height: rowH, color: grey }); center(text, y - rowH + 2, fontSize, true); y -= rowH + 2; }
-  function row(name: string, amount: number | null | undefined, shade = false, strong = false) {
-    room(rowH + 2);
-    if (shade) page.drawRectangle({ x: left, y: y - rowH, width: right - left, height: rowH, color: pale });
-    const value = amount === undefined ? "" : amount === null ? "Not entered" : money(amount);
-    let display = name; const maxWidth = right - left - 135;
-    while (normal.widthOfTextAtSize(display, fontSize) > maxWidth && display.length > 4) display = display.slice(0, -2);
-    if (display !== name) display += "...";
-    label(display, left + 3, y - rowH + 2, fontSize, strong); rightText(value, y - rowH + 2, strong); y -= rowH + 1;
+  function header(title: string, subtitle: string) {
+    page.drawRectangle({ x: 0, y: H - 106, width: W, height: 106, color: navy });
+    text("THE ESSEX", L, H - 35, 21, true, rgb(1, 1, 1));
+    text("GOLF & COUNTRY CLUB", L, H - 55, 9, false, rgb(0.78, 0.85, 0.81));
+    text(current.name.toUpperCase(), L, H - 81, 11, true, rgb(1, 1, 1));
+    text(String(current.year), R - 58, H - 45, 25, true, rgb(1, 1, 1));
+    text(title, L, 710, 22, true); text(subtitle, L, 688, 10, false, grey); y = 655;
   }
-  function section(title: string, items: { name: string; amount: number }[], total: number) {
-    y -= 5; bar(title);
-    if (!items.length) row("No transactions recorded", undefined);
-    else for (const item of items) row(item.name, item.amount);
-    row("Sub-Total", total, true, true);
+  function newPage(title: string, subtitle = `Year ended 31 October ${current.year}`) { page = pdf.addPage([W, H]); header(title, subtitle); }
+  function room(height: number, title = "Accounts - continued") { if (y - height < 76) newPage(title); }
+  function paragraph(value: string, size = 10, color = grey) {
+    for (const valueLine of wrap(value, R - L, size)) { room(15); text(valueLine, L, y, size, false, color); y -= size + 5; } y -= 7;
   }
-  center("Golf AGM Financial Statement", y, 15, true); y -= 25;
-  center("The Essex Golf & Country Club", y, 13, true); y -= 24;
-  room(rowH + 3); page.drawRectangle({ x: left, y: y - rowH, width: right - left, height: rowH, color: grey });
-  label("Period", left + 3, y - rowH + 2, fontSize, true);
-  label(`${period(start)}                 to                 ${period(new Date(end.getTime() - 86400000))}`, left + 158, y - rowH + 2); y -= rowH + 9;
-  row("Carried Forward - bank", openingBank);
-  row("Cash", previousCash?.amountPence ?? null);
-  if (code === "MENS" && charity.opening) row("Less Thommo's Charity brought forward", -charity.opening);
-  if (juniorOpening !== undefined) row("Less junior money brought forward", -juniorOpening);
-  row("Net Opening Balance", previousCash && (code !== "MENS" || juniorOpening !== undefined) ? openingBank + previousCash.amountPence - (code === "MENS" ? charity.opening : 0) - (juniorOpening ?? 0) : null, true, true);
-  section("Income", income, totalIn);
-  section("Expenses", expense, totalOut);
-  y -= 5; bar("Creditors");
-  if (code === "MENS") row("Thommo's Charity", charity.closing);
-  else row("Other creditors: not assessed", undefined);
-  if (code === "MENS") row("Junior money", juniorClosing ?? null);
-  y -= 5; bar("Debtors"); row("Not assessed", undefined);
-  y -= 5; bar("Closing Balance"); row("Account", closingBank); row("Cash", currentCash?.amountPence ?? null);
-  if (code === "MENS") row("Less Thommo's Charity", -charity.closing);
-  if (code === "MENS") row("Less junior money", juniorClosing === undefined ? null : -juniorClosing);
-  y -= 5; bar("Carried Forward");
-  row("Net balance", currentCash && (code !== "MENS" || juniorClosing !== undefined) ? closingBank + currentCash.amountPence - (code === "MENS" ? charity.closing : 0) - (juniorClosing ?? 0) : null, false, true);
-  y -= 4; room(30);
-  if (!previousCash || !currentCash) { label("Cash must be entered before the corresponding net balance can be calculated.", left + 3, y - fontSize, Math.max(7, fontSize - 0.5)); y -= rowH; }
-  if (code === "MENS") {
-    room(30);
-    label(`Charity: recorded transactions; ${charity.review.length} transaction(s) need review.`, left + 3, y - fontSize, Math.max(7, fontSize - 0.5)); y -= rowH;
-    label("Check other charity funds, creditors and debtors separately.", left + 3, y - fontSize, Math.max(7, fontSize - 0.5));
+  function section(title: string) { room(45); y -= 9; text(title.toUpperCase(), L, y, 10, true, green); y -= 13; page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: line }); y -= 23; }
+  function row(label: string, value: number | null, strong = false) {
+    const lines = wrap(label, R - L - 155, 10, strong); const h = Math.max(25, lines.length * 13 + 10); room(h);
+    if (strong) page.drawRectangle({ x: L - 5, y: y - h + 11, width: R - L + 10, height: h, color: pale });
+    for (let i = 0; i < lines.length; i++) text(lines[i], L + 3, y - i * 13, 10, strong);
+    const amount = money(value); text(amount, R - (strong ? bold : normal).widthOfTextAtSize(amount, 11) - 3, y, 11, strong, value === null ? amber : navy); y -= h;
   }
-  if (pageNumber > 1) label(`Page ${pageNumber}`, right - 35, 20, 7);
+  function comparisonRow(label: string, value: number | null, prior: number | null, strong = false) {
+    const lines = wrap(label, 270, 10, strong), h = Math.max(25, lines.length * 13 + 10); room(h);
+    if (strong) page.drawRectangle({ x: L - 5, y: y - h + 11, width: R - L + 10, height: h, color: pale });
+    lines.forEach((lineValue, i) => text(lineValue, L + 3, y - i * 13, 10, strong));
+    for (const [valueToShow, right] of [[value, 448], [prior, R]] as const) {
+      const display = money(valueToShow), font = strong ? bold : normal;
+      text(display, right - font.widthOfTextAtSize(display, 10), y, 10, strong, valueToShow === null ? amber : navy);
+    }
+    y -= h;
+  }
+  function tableHeading() { text("Category", L + 3, y, 9, true, grey); text(String(current.year), 412, y, 9, true, grey); text(String(previous.year), R - 25, y, 9, true, grey); y -= 24; }
+  function categoryTable(title: string, items: AnnualReport["income"], prior: AnnualReport["income"], total: number, priorTotal: number) {
+    section(title); tableHeading();
+    const names = [...new Set([...items.map(row => row.name), ...prior.map(row => row.name)])];
+    const byValue = (name: string) => items.find(row => row.name === name)?.amount ?? 0;
+    names.sort((a, b) => byValue(b) - byValue(a) || a.localeCompare(b));
+    for (const name of names) {
+      if (y < 115) { newPage(`${title} - continued`); tableHeading(); }
+      comparisonRow(name, byValue(name), prior.find(row => row.name === name)?.amount ?? 0);
+    }
+    comparisonRow(`Total ${title.toLowerCase()}`, total, priorTotal, true);
+  }
+  header("Annual accounts - AGM summary", `1 November ${current.year - 1} to 31 October ${current.year}`);
+  // This first page stands alone as the presentation handout.
+  const cards: [string, number | null][] = [["OPENING BANK", current.openingBank], ["CLOSING BANK", current.closingBank], ["AVAILABLE BANK & CASH", current.closingFunds]];
+  cards.forEach(([label, value], i) => {
+    const x = L + i * 171; page.drawRectangle({ x, y: 571, width: 157, height: 77, color: pale });
+    text(label, x + 10, 628, 8, true, green); text(money(value), x + 10, 596, value === null ? 14 : 19, true);
+  });
+  y = 544; section("The year in figures"); tableHeading();
+  comparisonRow("Income after recorded charity allocations", current.totalIncome, previous.totalIncome);
+  comparisonRow("Expenditure after recorded charity allocations", current.totalExpense, previous.totalExpense);
+  comparisonRow(current.surplus >= 0 ? "Surplus on the recorded accounts basis" : "Deficit on the recorded accounts basis", current.surplus, previous.surplus, true);
+  section("Year-end funds");
+  row("Bank and cash on hand", current.closingCash === null ? null : current.closingBank + current.closingCash);
+  if (current.code === "MENS") row("Less Thommo's Charity funds held", -current.charity.closing);
+  if (current.code === "MENS") row("Less Juniors' money held", current.juniorClosing === null ? null : -current.juniorClosing);
+  row("Available bank and cash before other balances", current.closingFunds, true);
+  const narrative = current.commentary || `The account closed with ${money(current.closingBank)} in the bank${current.closingCash === null ? "; cash is awaiting confirmation" : ` and ${money(current.closingCash)} cash on hand`}. ${current.code === "MENS" ? "Charity and Juniors' funds are held separately from the section's available funds." : "The Club and Men's accounts are reported separately."}`;
+  section("Treasurer's commentary");
+  // Keep the handout to one page; full commentary is repeated with the notes.
+  for (const value of wrap(narrative, R - L, 10).slice(0, 4)) { text(value, L, y, 10, false, grey); y -= 15; }
+  if (current.code === "MENS" && previous.year === 2025) {
+    text("2025 includes the previous appeal's charity payment. The results are not directly comparable.", L, 110, 8, false, grey);
+  }
+  if (current.code === "CLUB" && previous.issues.some(issue => issue.startsWith("The ledger begins"))) {
+    text("The prior-year Club figures cover the account's opening period, not a full year.", L, 110, 8, false, grey);
+  }
+  if (current.issues.length) text(`Draft: ${current.issues.length} review item(s). See the reconciliation notes.`, L, 88, 9, true, amber);
+  else text("Prepared for AGM approval. Signatures are added when approved.", L, 88, 9, false, grey);
+  if (!summaryOnly) {
+    newPage("Income and expenditure", `Comparative figures: ${previous.year} and ${current.year}. See the basis note below.`);
+    if (current.code === "MENS" && previous.year === 2025) paragraph("Comparative basis: 2025 retains the previous appeal's £8,206.23 Samaritans payment in its recorded expenditure. The current-year charity ledger separates Thommo's funds. These totals are therefore not a like-for-like comparison of ordinary section spending.", 9);
+    categoryTable("Income", current.income, previous.income, current.totalIncome, previous.totalIncome);
+    categoryTable("Expenditure", current.expense, previous.expense, current.totalExpense, previous.totalExpense);
+    comparisonRow("Surplus / (deficit)", current.surplus, previous.surplus, true);
+    paragraph("Money collected or spent for Thommo's Charity is excluded from section income and expenditure. The section's own charity contribution is included as expenditure. Juniors' receipts and payments remain in their recorded categories; the movement in funds held is reconciled below.", 9);
+    newPage("Year-end financial position");
+    section("Opening position"); row("Carried Forward - bank", current.openingBank); row(`Cash at 31 October ${current.year - 1}`, current.openingCash);
+    if (current.code === "MENS") { row("Less Thommo's Charity brought forward", -current.charity.opening); row("Less junior money brought forward", current.juniorOpening === null ? null : -current.juniorOpening); } row("Net Opening Balance - recorded funds", current.openingFunds, true);
+    section("Closing position"); row("Account - closing bank", current.closingBank); row("Cash", current.closingCash);
+    if (current.code === "MENS") { row("Less Thommo's Charity", -current.charity.closing); row("Less junior money", current.juniorClosing === null ? null : -current.juniorClosing); } row("Net balance - available bank and cash", current.closingFunds, true);
+    section("Other assets and liabilities"); row("Debtors - amounts owed to the account", current.debtors); row("Other creditors - amounts owed by the account", current.otherCreditors); row("Net assets before stock", current.netAssetsBeforeStock, true);
+    paragraph("Stock is a non-cash asset and is shown separately in the notes. It is not added to available bank and cash. Charity and Juniors' funds are already deducted above.", 9);
+    newPage("Reconciliation and notes");
+    section("Bank reconciliation"); row("Opening bank balance", current.openingBank); row("Bank receipts during the year", current.credit); row("Bank payments during the year", -current.debit); row("Closing bank balance", current.closingBank, true);
+    section("Movement in available funds"); row("Net opening recorded funds", current.openingFunds); row("Surplus / (deficit) per income and expenditure", current.surplus);
+    if (current.code === "MENS") row("Release / (increase) in Juniors' funds held", current.juniorOpening === null || current.juniorClosing === null ? null : current.juniorOpening - current.juniorClosing);
+    row("Change in cash held outside the bank", current.openingCash === null || current.closingCash === null ? null : current.closingCash - current.openingCash);
+    row("Closing available bank and cash", current.closingFunds, true);
+    if (current.year === 2026 && current.code === "MENS" && current.openingBank === 741545) paragraph("Opening reconciliation: nine December entries in the source workbook were dated 2025 within the 2024/25 transaction sequence. Correcting them to December 2024 increases the 1 November 2025 opening bank balance by £758.51. Total receipts, payments and the closing bank balance across all years are unchanged. Original dates are retained in the correction audit trail. The prior workbook summary also added £290 labelled Stock to income; that manual amount is not treated as a bank receipt here.", 9);
+    if (current.year === 2026 && current.code === "CLUB" && current.openingCash === 0 && current.closingCash === 0) paragraph("Opening reconciliation: the 1 November 2025 bank balance agrees to the source workbook. Opening and closing cash are confirmed as nil.", 9);
+    paragraph("These are management accounts on a recorded receipts-and-payments basis, with separately identified funds and year-end assets/liabilities. Comparative figures are recalculated from the dated ledger and may differ from the original workbook summaries. Historical appeals outside the current charity ledger have not been retrospectively reclassified.", 9);
+    section("Review status");
+    if (current.issues.length) current.issues.forEach(issue => paragraph(issue, 10, amber)); else paragraph("Cash, Juniors' funds and other debtors/creditors are recorded. No uncategorised or flagged charity transactions remain for this period.");
+    if (y < 300) newPage("Stock and AGM approval");
+    section("Stock held at year end");
+    if (current.stockValue === null) paragraph("Stock quantity and valuation have not yet been confirmed. No stock value has been added to these accounts. Enter the year-end stock count in the account review screen.", 10, amber);
+    else {
+      for (const item of current.stockItems) row(`${item.description} - ${item.quantity} x ${money(item.unitCostPence)}`, item.quantity * item.unitCostPence);
+      row("Total stock value (non-cash)", current.stockValue, true);
+      row("Net assets including separately valued stock", current.netAssetsBeforeStock === null ? null : current.netAssetsBeforeStock + current.stockValue, true);
+    }
+    if (current.commentary) { section("Treasurer's commentary - full text"); paragraph(current.commentary); }
+    section("AGM approval"); paragraph("Prepared for Craig Reid (Treasurer) and Paul Thompson (Captain) to review and sign at the AGM. The approved pack will retain their drawn signatures, AGM date and approval timestamp. This unsigned copy does not record an approval.");
+  }
+  const pages = pdf.getPages();
+  for (let index = 0; index < pages.length; index++) {
+    page = pages[index]; page.drawLine({ start: { x: L, y: 58 }, end: { x: R, y: 58 }, thickness: 0.6, color: line });
+    text(`THE ESSEX  /  ${current.code === "MENS" ? "MEN'S ACCOUNT" : "CLUB ACCOUNT"}  /  ${current.year}`, L, 41, 8, false, grey);
+    text(`${index + 1} / ${pages.length}`, R - 30, 41, 8, false, grey);
+  }
   return Buffer.from(await pdf.save());
+}
+export async function generateAnnualPdf(code: "MENS" | "CLUB", year: number, summaryOnly = false) {
+  const { current, previous } = await loadAnnualAccounts(code, year);
+  return renderAnnualPack(current, previous, summaryOnly);
 }

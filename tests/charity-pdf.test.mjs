@@ -24,19 +24,27 @@ function route(cashCount = null) {
     '@/lib/invoice-auth': { invoiceUser: async () => ({ id: 'treasurer' }) },
     '@/lib/prisma': { prisma: {
       annualAccountsApproval: { findFirst: async () => null },
-      financeAccount: { findUnique: async args => ({ openingBalance: 1000, transactions: bank.filter(t => t.transactionDate < args.include.transactions.where.transactionDate.lt) }) },
+      financeAccount: { findUnique: async args => ({ code: args.where.code, name: args.where.code === 'MENS' ? "Men's Account" : 'Club Account', openingDate: day('2023-01-01'), openingBalance: 1000, transactions: bank.filter(t => t.transactionDate < args.include.transactions.where.transactionDate.lt) }) },
       charityEntry: { findMany: async () => entries },
-      cashYearEnd: { findUnique: async ({ where }) => cashCount && where.accountCode_year.accountCode === cashCount.accountCode && where.accountCode_year.year === cashCount.year ? cashCount : null },
+      cashYearEnd: { findMany: async ({ where }) => cashCount && where.accountCode === cashCount.accountCode ? [cashCount] : [] },
+      annualAccountsReview: { findMany: async () => [] },
     } },
     '@/lib/charity-ledger': charity,
   };
-  const generator = {};
-  const generatorCode = ts.transpileModule(readFileSync(new URL('../lib/annual-accounts-pdf.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
-  new Function('exports', 'require', generatorCode)(generator, name => Object.hasOwn(mocks, name) ? mocks[name] : require(name));
-  mocks['@/lib/annual-accounts-pdf'] = generator;
-  const exports = {};
-  const code = ts.transpileModule(readFileSync(new URL('../app/accounts/annual-pdf/route.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
-  new Function('exports', 'require', code)(exports, name => Object.hasOwn(mocks, name) ? mocks[name] : require(name));
+  function load(path) {
+    const exports = {};
+    const source = ts.transpileModule(readFileSync(new URL(path, import.meta.url), 'utf8'), { compilerOptions: { esModuleInterop: true, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+    new Function('exports', 'require', source)(exports, name => {
+      if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.startsWith('./annual-accounts')) return load('../lib/' + name.slice(2) + '.ts');
+      if (name === './pdf-fonts') return load('../lib/pdf-fonts.ts');
+      if (name === './charity-ledger') return charity;
+      return require(name);
+    });
+    return exports;
+  }
+  mocks['@/lib/annual-accounts-pdf'] = load('../lib/annual-accounts-pdf.ts');
+  const exports = load('../app/accounts/annual-pdf/route.ts');
   return exports.GET;
 }
 async function document(year) {
@@ -48,11 +56,11 @@ async function document(year) {
 }
 test('AGM statement shows the contribution and one charity liability', async () => {
   const text = await document(2026);
-  assert.match(text, /Golf AGM Financial Statement/);
+  assert.match(text, /Annual accounts - AGM summary/);
   assert.match(text, /Awards Night\s+£500\.00/);
   assert.match(text, /Charity contribution\s+£83\.00/);
-  assert.match(text, /Thommo's Charity\s+£183\.00/);
-  assert.match(text, /Account\s+£1,600\.00/);
+  assert.match(text, /Less Thommo's Charity\s+-£183\.00/);
+  assert.match(text, /Account - closing bank\s+£1,600\.00/);
   assert.match(text, /Less Thommo's Charity\s+-£183\.00/);
   assert.doesNotMatch(text, /Thommo Charity\s+£100\.00/);
 });
@@ -60,19 +68,19 @@ test('November payment clears liability without a second charity expense', async
   const text = await document(2027);
   assert.match(text, /Less Thommo's Charity brought forward\s+-£183\.00/);
   assert.match(text, /Thommo's Charity\s+£0\.00/);
-  assert.match(text, /Account\s+£1,417\.00/);
+  assert.match(text, /Account - closing bank\s+£1,417\.00/);
   assert.doesNotMatch(text, /Charity contribution\s+£83\.00/);
 });
 test('cash is included in the net balance and missing counts remain visible', async () => {
   const absent = await document(2026);
-  assert.match(absent, /Cash\s+Not entered/);
+  assert.match(absent, /Cash\s+Not confirmed/);
   const response = await route({ accountCode: 'MENS', year: 2026, amountPence: 12345 })({ url: 'https://example.test/accounts/annual-pdf?account=MENS&year=2026' });
   const path = '/tmp/golf-cash-check-2026.pdf'; writeFileSync(path, response.body);
   const text = execFileSync('pdftotext', ['-layout', path, '-'], { encoding: 'utf8' });
   assert.match(text, /Cash\s+£123\.45/);
-  assert.match(text, /Junior money\s+£148\.28/);
   assert.match(text, /Less junior money\s+-£148\.28/);
-  assert.match(text, /Net balance\s+£1,392\.17/);
+  assert.match(text, /Less junior money\s+-£148\.28/);
+  assert.match(text, /Net balance - available bank and cash\s+£1,392\.17/);
 });
 test('club accounts do not reclassify mens charity categories', async () => {
   const response = await route()({ url: 'https://example.test/accounts/annual-pdf?account=CLUB&year=2026' });

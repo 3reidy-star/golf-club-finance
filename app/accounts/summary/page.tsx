@@ -1,257 +1,32 @@
 import { redirect } from "next/navigation";
-
-import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
-import { getAccountCategories } from "@/lib/account-categories";
-import { reportCharity, pounds } from "@/lib/charity-ledger";
-
+import { invoiceUser } from "@/lib/invoice-auth";
+import { loadAnnualAccounts } from "@/lib/annual-accounts-data";
+import { money } from "@/lib/invoices";
 export const dynamic = "force-dynamic";
-
-type SearchParams = Promise<{
-  account?: string;
-  year?: string;
-}>;
-
-function money(value: number) {
-  return new Intl.NumberFormat("en-GB", {
-    style: "currency",
-    currency: "GBP",
-  }).format(value);
-}
-
-export default async function AccountsSummaryPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
-  const session = await auth();
-  if (!session?.user) redirect("/login");
-  if (session.user.role !== "TREASURER") redirect("/");
-
-  const params = await searchParams;
-  const categories = await getAccountCategories();
-  const requestedYear = Number(params.year);
-  const currentYear = new Date().getUTCFullYear();
-  const year = Number.isFinite(requestedYear) && requestedYear >= 2000 && requestedYear <= 2100
-    ? requestedYear
-    : currentYear;
-  const accountFilter = params.account === "CLUB" || params.account === "MENS"
-    ? params.account
-    : "ALL";
-
-  const accounts = await prisma.financeAccount.findMany({
-    include: {
-      transactions: {
-        include: { invoicePayments: { where: { removedAt: null }, select: { amountPence: true } } },
-        orderBy: { transactionDate: "asc" },
-      },
-    },
-    orderBy: { name: "asc" },
-  });
-
-  const allTransactions = accounts.flatMap((account) =>
-    account.transactions.map((transaction) => ({
-      ...transaction,
-      accountCode: account.code,
-      accountName: account.name,
-      openingBalance: Number(account.openingBalance),
-    })),
-  );
-
-  const [charityEntries, cashCounts] = await Promise.all([
-    prisma.charityEntry.findMany({ where: { accountCode: "MENS" } }),
-    prisma.cashYearEnd.findMany({ where: { year } }),
-  ]);
-  const start = new Date(Date.UTC(year, 0, 1));
-  const end = new Date(Date.UTC(year + 1, 0, 1));
-
-  const relevantAccounts = accountFilter === "ALL"
-    ? accounts
-    : accounts.filter((account) => account.code === accountFilter);
-
-  const accountCodes = new Set(relevantAccounts.map((account) => account.code));
-  const yearTransactions = allTransactions.filter(
-    (row) => accountCodes.has(row.accountCode) && row.transactionDate >= start && row.transactionDate < end,
-  );
-
-  const openingBalance = relevantAccounts.reduce((total, account) => {
-    const priorMovement = account.transactions
-      .filter((row) => row.transactionDate < start)
-      .reduce((sum, row) => sum + Number(row.credit) - Number(row.debit), 0);
-    return total + Number(account.openingBalance) + priorMovement;
-  }, 0);
-
-  const categoryRows = categories.map((category) => {
-    const rows = yearTransactions.filter((row) => row.category === category);
-    const credit = rows.reduce((total, row) => total + Number(row.credit), 0);
-    const debit = rows.reduce((total, row) => total + Number(row.debit), 0);
-    return { category, credit, debit, net: credit - debit };
-  }).filter((row) => row.credit !== 0 || row.debit !== 0 || row.category === "Uncategorised");
-
-  const mensTransactions = allTransactions.filter(row => row.accountCode === "MENS");
-  const agmStart = new Date(Date.UTC(year - 1, 10, 1));
-  const agmEnd = new Date(Date.UTC(year, 10, 1));
-  const charity = reportCharity(charityEntries, mensTransactions, agmStart, agmEnd);
-  const agmBankBalance = relevantAccounts.reduce((sum, account) => sum + Number(account.openingBalance) + account.transactions.filter(row => row.transactionDate < agmEnd).reduce((movement, row) => movement + Number(row.credit) - Number(row.debit), 0), 0);
-  const allCashEntered = relevantAccounts.length > 0 && relevantAccounts.every(account => cashCounts.some(count => count.accountCode === account.code));
-  const agmCashPence = relevantAccounts.reduce((sum, account) => sum + (cashCounts.find(count => count.accountCode === account.code)?.amountPence ?? 0), 0);
-  const showCharity = accountFilter !== "CLUB";
-
-  const totalCredit = yearTransactions.reduce((total, row) => total + Number(row.credit), 0);
-  const totalDebit = yearTransactions.reduce((total, row) => total + Number(row.debit), 0);
-  const closingBalance = openingBalance + totalCredit - totalDebit;
-
-  const years = Array.from(
-    new Set(
-      allTransactions.map((row) => row.transactionDate.getUTCFullYear()),
-    ),
-  ).sort((a, b) => b - a);
-
-  if (!years.includes(currentYear)) years.unshift(currentYear);
-  if (!years.includes(year)) years.unshift(year);
-
-  return (
-    <main className="min-h-screen bg-slate-100 p-6 md:p-10">
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-2">
-            <a href="/accounts" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              ← Transaction history
-            </a>
-            <a href="/accounts/import" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Import transactions
-            </a>
-          </div>
-        </div>
-
-        <div className="mb-8">
-          <p className="text-sm font-semibold uppercase tracking-wide text-slate-500">Treasurer only</p>
-          <h1 className="mt-2 text-3xl font-bold text-slate-900">Annual accounts summary</h1>
-          <p className="mt-2 text-slate-600">
-            Year and category summary based on the Summary and AGM-style views in the existing workbook.
-          </p>
-        </div>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <form method="get" className="flex flex-wrap items-end gap-4">
-            <label className="text-sm font-medium text-slate-700">
-              Account
-              <select name="account" defaultValue={accountFilter} className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                <option value="ALL">All accounts</option>
-                {accounts.map((account) => (
-                  <option key={account.code} value={account.code}>{account.name}</option>
-                ))}
-              </select>
-            </label>
-
-            <label className="text-sm font-medium text-slate-700">
-              Year
-              <select name="year" defaultValue={String(year)} className="mt-1 block rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
-                {years.map((value) => (
-                  <option key={value} value={value}>{value}</option>
-                ))}
-              </select>
-            </label>
-
-            <button type="submit" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800">
-              Apply
-            </button>
-          </form>
-        </section>
-
-        <section className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-          <h2 className="text-lg font-bold text-emerald-950">AGM annual accounts PDFs</h2>
-          <p className="mt-1 text-sm text-emerald-900">The AGM year runs from 1 November to 31 October. Thommo&apos;s Charity is shown as a liability based on recorded transactions.</p>
-          <div className="mt-4 flex flex-wrap gap-3"><a href={`/accounts/annual-pdf?account=MENS&year=${year}`} className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s {year} PDF</a><a href={`/accounts/annual-pdf?account=CLUB&year=${year}`} className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club {year} PDF</a></div>
-        </section>
-
-        <section className="mt-6 rounded-xl border border-emerald-200 bg-white p-5">
-          <h2 className="text-lg font-bold">AGM sign-off</h2>
-          <p className="mt-1 text-sm text-slate-600">Draw signatures for Craig Reid (Treasurer) and Paul Thompson (Captain), record the AGM date and save the approved accounts PDF.</p>
-          <div className="mt-4 flex flex-wrap gap-3"><a className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white" href={`/accounts/agm?account=MENS&year=${year}`}>Men’s {year} sign-off</a><a className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white" href={`/accounts/agm?account=CLUB&year=${year}`}>Club {year} sign-off</a></div>
-        </section>
-
-        <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Cash on hand at 31 October {year}</h2><p className="mt-1 text-sm text-slate-600">Year-end cash counts are separate from bank transactions.</p></div><a href={`/accounts/cash?year=${year}`} className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white">Enter cash balances</a></div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">{relevantAccounts.map(account => { const cash = cashCounts.find(count => count.accountCode === account.code); return <div key={account.code}><p className="text-sm text-slate-500">{account.name}</p><p className="text-xl font-bold">{cash ? money(pounds(cash.amountPence)) : "Not entered"}</p></div>; })}</div>
-        </section>
-
-        {showCharity && <section className="mt-6 rounded-xl border border-emerald-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Thommo&apos;s Charity</h2><p className="mt-1 text-sm text-slate-600">AGM year: 1 November {year - 1} to 31 October {year}.</p></div><a href="/accounts/charity" className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white">Manage charity allocations</a></div>
-          <div className="mt-4 grid gap-4 sm:grid-cols-3"><div><p className="text-sm text-slate-500">Section contribution in AGM year</p><p className="text-xl font-bold">{money(pounds(charity.contribution))}</p></div><div><p className="text-sm text-slate-500">Recorded payable at 31 October</p><p className="text-xl font-bold">{money(pounds(charity.closing))}</p></div><div><p className="text-sm text-slate-500">{allCashEntered ? "Bank and cash less recorded charity amount" : "Bank less recorded charity (cash not entered)"}</p><p className="text-xl font-bold">{money(agmBankBalance + (allCashEntered ? pounds(agmCashPence) : 0) - pounds(charity.closing))}</p></div></div>
-          <p className="mt-4 text-sm text-amber-800">Thommo Charity bank transactions are included automatically, alongside any separate charity allocations. {charity.review.length} transaction{charity.review.length === 1 ? " needs" : "s need"} review. Check for charity funds received elsewhere. The bank figures below remain cash movements.</p>
-        </section>}
-
-        {allTransactions.length === 0 ? (
-          <section className="mt-6 rounded-xl border border-amber-200 bg-amber-50 p-6">
-            <h2 className="text-lg font-semibold text-amber-900">No transactions uploaded yet</h2>
-            <p className="mt-2 text-sm leading-6 text-amber-800">
-              This summary is ready, but it will remain empty until the Club and Men&apos;s transaction history is imported. Once those files are loaded, the annual figures and category totals will calculate automatically.
-            </p>
-            <a href="/accounts/import" className="mt-4 inline-block rounded-lg bg-amber-900 px-4 py-2 text-sm font-semibold text-white">
-              Import transaction history
-            </a>
-          </section>
-        ) : (
-          <>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase text-slate-500">Opening balance</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">{money(openingBalance)}</p>
-              </section>
-              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase text-slate-500">Income</p>
-                <p className="mt-2 text-2xl font-bold text-emerald-700">{money(totalCredit)}</p>
-              </section>
-              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase text-slate-500">Expenditure</p>
-                <p className="mt-2 text-2xl font-bold text-red-700">{money(totalDebit)}</p>
-              </section>
-              <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <p className="text-xs font-semibold uppercase text-slate-500">Closing balance</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">{money(closingBalance)}</p>
-              </section>
-            </div>
-
-            <section className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-              <div className="border-b border-slate-200 p-5">
-                <h2 className="text-lg font-semibold text-slate-900">Category summary</h2>
-                <p className="mt-1 text-sm text-slate-500">{yearTransactions.length} transactions in {year}.</p>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase text-slate-500">Category</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Credit</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Debit</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold uppercase text-slate-500">Net</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {categoryRows.map((row) => (
-                      <tr key={row.category} className={row.category === "Uncategorised" ? "bg-amber-50" : ""}>
-                        <td className="px-4 py-3 text-sm font-medium text-slate-900">{row.category}</td>
-                        <td className="px-4 py-3 text-right text-sm text-emerald-700">{row.credit ? money(row.credit) : "-"}</td>
-                        <td className="px-4 py-3 text-right text-sm text-red-700">{row.debit ? money(row.debit) : "-"}</td>
-                        <td className="px-4 py-3 text-right text-sm font-semibold text-slate-900">{money(row.net)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot className="bg-slate-50">
-                    <tr>
-                      <td className="px-4 py-3 text-sm font-bold text-slate-900">Total</td>
-                      <td className="px-4 py-3 text-right text-sm font-bold text-emerald-700">{money(totalCredit)}</td>
-                      <td className="px-4 py-3 text-right text-sm font-bold text-red-700">{money(totalDebit)}</td>
-                      <td className="px-4 py-3 text-right text-sm font-bold text-slate-900">{money(totalCredit - totalDebit)}</td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </section>
-          </>
-        )}
-      </div>
-    </main>
-  );
+const display = (value: number | null) => value === null ? "Not confirmed" : money(value);
+export default async function AccountsSummaryPage({ searchParams }: { searchParams: Promise<{ account?: string; year?: string }> }) {
+  if (!await invoiceUser()) redirect("/");
+  const params = await searchParams, requested = Number(params.year), currentYear = new Date().getUTCFullYear();
+  const year = Number.isInteger(requested) && requested >= 2000 && requested <= 2100 ? requested : currentYear;
+  const filter = params.account === "MENS" || params.account === "CLUB" ? params.account : "ALL";
+  const codes: ("CLUB" | "MENS")[] = filter === "ALL" ? ["CLUB", "MENS"] : [filter];
+  const reports = await Promise.all(codes.map(code => loadAnnualAccounts(code, year)));
+  const years = [...new Set([year, ...Array.from({ length: 7 }, (_, i) => currentYear - i)])].sort((a, b) => b - a);
+  return <main className="min-h-screen bg-slate-100 p-4 md:p-10"><div className="mx-auto max-w-6xl space-y-6">
+    <a className="underline" href="/accounts">← Transaction history</a>
+    <div><p className="text-sm font-semibold uppercase text-slate-500">The Essex Golf &amp; Country Club</p><h1 className="mt-2 text-3xl font-bold">Annual accounts and AGM pack</h1><p className="mt-2 text-slate-600">Financial year: 1 November {year - 1} to 31 October {year}. All figures below and in the pack use this same period.</p></div>
+    <form method="get" className="flex flex-wrap items-end gap-4 rounded-xl bg-white p-5"><label>Account<select name="account" defaultValue={filter} className="mt-1 block rounded border p-2"><option value="ALL">Both accounts</option><option value="CLUB">Club Account</option><option value="MENS">Men’s Account</option></select></label><label>Year ending 31 October<select name="year" defaultValue={year} className="mt-1 block rounded border p-2">{years.map(value => <option key={value}>{value}</option>)}</select></label><button className="rounded bg-slate-900 px-4 py-2 font-semibold text-white">Apply</button></form>
+    {reports.map(({ current: r, previous }) => <section key={r.code} className="space-y-5 rounded-xl border bg-white p-5 md:p-7">
+      <div><h2 className="text-2xl font-bold">{r.name}</h2><p className="mt-1 text-sm text-slate-600">{r.rows} bank transactions in the AGM year. Charity and Juniors’ money are shown separately.</p></div>
+      <div className="grid gap-3 sm:grid-cols-3">{[["Opening bank", r.openingBank], ["Closing bank", r.closingBank], ["Available bank and cash", r.closingFunds]].map(([label, amount]) => <div key={String(label)} className="rounded-lg bg-emerald-50 p-4"><p className="text-sm text-emerald-900">{label}</p><p className="mt-2 text-2xl font-bold">{display(amount as number | null)}</p></div>)}</div>
+      <div className="flex flex-wrap gap-3"><a className="rounded bg-emerald-900 px-4 py-2 text-white" href={`/accounts/annual-pdf?account=${r.code}&year=${year}`}>Download AGM pack</a><a className="rounded border px-4 py-2" href={`/accounts/annual-pdf?account=${r.code}&year=${year}&summary=1`}>One-page AGM summary</a><a className="rounded border px-4 py-2" href={`/accounts/year-end?account=${r.code}&year=${year}`}>Year-end review and stock</a><a className="rounded border px-4 py-2" href={`/accounts/agm?account=${r.code}&year=${year}`}>AGM sign-off</a></div>
+      <p className="text-sm text-slate-500">Downloads use the latest approved copy when available. Prepare a fresh copy through AGM sign-off for revised accounts.</p>
+      <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="py-3">Annual result</th><th className="text-right">{year}</th><th className="text-right">{year - 1}</th></tr></thead><tbody>{[["Income after recorded charity allocations", r.totalIncome, previous.totalIncome], ["Expenditure after recorded charity allocations", r.totalExpense, previous.totalExpense], ["Surplus / (deficit)", r.surplus, previous.surplus]].map(([label, value, prior]) => <tr key={String(label)} className="border-b"><td className="py-3">{label}</td><td className="text-right font-semibold">{display(value as number)}</td><td className="text-right">{display(prior as number)}</td></tr>)}</tbody></table></div>
+      {r.code === "MENS" && previous.year === 2025 && <p className="text-sm text-amber-800">The 2025 figures include the previous appeal’s £8,206.23 Samaritans payment. They are not a like-for-like comparison of ordinary section spending.</p>}
+      <dl className="grid gap-4 text-sm sm:grid-cols-4">{[["Cash on hand", r.closingCash], ["Thommo’s Charity held", r.charity.closing], ["Juniors’ money held", r.juniorClosing], ["Stock value (non-cash)", r.stockValue]].map(([label, amount]) => <div key={String(label)}><dt className="text-slate-500">{label}</dt><dd className="mt-1 text-lg font-bold">{display(amount as number | null)}</dd></div>)}</dl>
+      {r.issues.length > 0 && <div className="rounded-lg bg-amber-50 p-4"><h3 className="font-bold">Items to resolve</h3><ul className="mt-2 list-disc space-y-1 pl-5">{r.issues.map(issue => <li key={issue}>{issue}</li>)}</ul></div>}
+      {r.stockValue === null && <p className="text-sm text-amber-800">Stock count and valuation are unconfirmed. Stock is not included in the available cash figure.</p>}
+      <details><summary className="cursor-pointer font-semibold">Income and expenditure by category</summary><div className="mt-4 grid gap-6 md:grid-cols-2">{[["Income", r.income], ["Expenditure", r.expense]].map(([title, rows]) => <div key={String(title)}><h3 className="font-bold">{title as string}</h3><table className="mt-2 w-full text-sm"><tbody>{(rows as typeof r.income).map(row => <tr className="border-b" key={row.name}><td className="py-2">{row.name}</td><td className="text-right">{money(row.amount)}</td></tr>)}</tbody></table></div>)}</div></details>
+    </section>)}
+  </div></main>;
 }
