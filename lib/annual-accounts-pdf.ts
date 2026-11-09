@@ -4,7 +4,7 @@ import { loadAnnualAccounts } from "./annual-accounts-data";
 import type { AnnualReport } from "./annual-accounts";
 const money = (value: number | null) => value === null ? "Not confirmed" : `${value < 0 ? "-" : ""}£${(Math.abs(value) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-export async function renderAnnualPack(current: AnnualReport, previous: AnnualReport, summaryOnly = false) {
+export async function renderAnnualPack(current: AnnualReport, summaryOnly = false) {
   const pdf = await PDFDocument.create();
   pdf.setTitle(`The Essex - ${current.name} - Annual accounts ${current.year}`);
   const normal = await embedReportFont(pdf), bold = normal;
@@ -40,32 +40,19 @@ export async function renderAnnualPack(current: AnnualReport, previous: AnnualRe
   }
   function section(title: string) { room(45); y -= 9; text(title.toUpperCase(), L, y, 10, true, green); y -= 13; page.drawLine({ start: { x: L, y }, end: { x: R, y }, thickness: 0.8, color: line }); y -= 23; }
   function row(label: string, value: number | null, strong = false) {
-    const lines = wrap(label, R - L - 155, 10, strong); const h = Math.max(25, lines.length * 13 + 10); room(h);
+    const lines = wrap(label, R - L - 155, 10, strong); const h = Math.max(22, lines.length * 13 + 7); room(h);
     if (strong) page.drawRectangle({ x: L - 5, y: y - h + 11, width: R - L + 10, height: h, color: pale });
     for (let i = 0; i < lines.length; i++) text(lines[i], L + 3, y - i * 13, 10, strong);
     const amount = money(value); text(amount, R - (strong ? bold : normal).widthOfTextAtSize(amount, 11) - 3, y, 11, strong, value === null ? amber : navy); y -= h;
   }
-  function comparisonRow(label: string, value: number | null, prior: number | null, strong = false) {
-    const lines = wrap(label, 270, 10, strong), h = Math.max(25, lines.length * 13 + 10); room(h);
-    if (strong) page.drawRectangle({ x: L - 5, y: y - h + 11, width: R - L + 10, height: h, color: pale });
-    lines.forEach((lineValue, i) => text(lineValue, L + 3, y - i * 13, 10, strong));
-    for (const [valueToShow, right] of [[value, 448], [prior, R]] as const) {
-      const display = money(valueToShow), font = strong ? bold : normal;
-      text(display, right - font.widthOfTextAtSize(display, 10), y, 10, strong, valueToShow === null ? amber : navy);
-    }
-    y -= h;
-  }
-  function tableHeading() { text("Category", L + 3, y, 9, true, grey); text(String(current.year), 412, y, 9, true, grey); text(String(previous.year), R - 25, y, 9, true, grey); y -= 24; }
-  function categoryTable(title: string, items: AnnualReport["income"], prior: AnnualReport["income"], total: number, priorTotal: number) {
-    section(title); tableHeading();
-    const names = [...new Set([...items.map(row => row.name), ...prior.map(row => row.name)])];
-    const byValue = (name: string) => items.find(row => row.name === name)?.amount ?? 0;
-    names.sort((a, b) => byValue(b) - byValue(a) || a.localeCompare(b));
-    for (const name of names) {
+  function tableHeading() { text("Category", L + 3, y, 9, true, grey); text(String(current.year), R - 25, y, 9, true, grey); y -= 24; }
+  function categoryTable(title: string, items: AnnualReport["income"], total: number) {
+    room(130, title); section(title); tableHeading();
+    for (const item of items) {
       if (y < 115) { newPage(`${title} - continued`); tableHeading(); }
-      comparisonRow(name, byValue(name), prior.find(row => row.name === name)?.amount ?? 0);
+      row(item.name, item.amount);
     }
-    comparisonRow(`Total ${title.toLowerCase()}`, total, priorTotal, true);
+    row(`Total ${title.toLowerCase()}`, total, true);
   }
   header("Annual accounts - AGM summary", `1 November ${current.year - 1} to 31 October ${current.year}`);
   // This first page stands alone as the presentation handout.
@@ -75,9 +62,9 @@ export async function renderAnnualPack(current: AnnualReport, previous: AnnualRe
     text(label, x + 10, 628, 8, true, green); text(money(value), x + 10, 596, value === null ? 14 : 19, true);
   });
   y = 544; section("The year in figures"); tableHeading();
-  comparisonRow("Income after recorded charity allocations", current.totalIncome, previous.totalIncome);
-  comparisonRow("Expenditure after recorded charity allocations", current.totalExpense, previous.totalExpense);
-  comparisonRow(current.surplus >= 0 ? "Surplus on the recorded accounts basis" : "Deficit on the recorded accounts basis", current.surplus, previous.surplus, true);
+  row("Income after recorded charity allocations", current.totalIncome);
+  row("Expenditure after recorded charity allocations", current.totalExpense);
+  row(current.surplus >= 0 ? "Surplus on the recorded accounts basis" : "Deficit on the recorded accounts basis", current.surplus, true);
   section("Year-end funds");
   row("Bank and cash on hand", current.closingCash === null ? null : current.closingBank + current.closingCash);
   if (current.code === "MENS") row("Less Thommo's Charity funds held", -current.charity.closing);
@@ -87,20 +74,13 @@ export async function renderAnnualPack(current: AnnualReport, previous: AnnualRe
   section("Treasurer's commentary");
   // Keep the handout to one page; full commentary is repeated with the notes.
   for (const value of wrap(narrative, R - L, 10).slice(0, 4)) { text(value, L, y, 10, false, grey); y -= 15; }
-  if (current.code === "MENS" && previous.year === 2025) {
-    text("2025 includes the previous appeal's charity payment. The results are not directly comparable.", L, 110, 8, false, grey);
-  }
-  if (current.code === "CLUB" && previous.issues.some(issue => issue.startsWith("The ledger begins"))) {
-    text("The prior-year Club figures cover the account's opening period, not a full year.", L, 110, 8, false, grey);
-  }
   if (current.issues.length) text(`Draft: ${current.issues.length} review item(s). See the reconciliation notes.`, L, 88, 9, true, amber);
   else text("Prepared for AGM approval. Signatures are added when approved.", L, 88, 9, false, grey);
   if (!summaryOnly) {
-    newPage("Income and expenditure", `Comparative figures: ${previous.year} and ${current.year}. See the basis note below.`);
-    if (current.code === "MENS" && previous.year === 2025) paragraph("Comparative basis: 2025 retains the previous appeal's £8,206.23 Samaritans payment in its recorded expenditure. The current-year charity ledger separates Thommo's funds. These totals are therefore not a like-for-like comparison of ordinary section spending.", 9);
-    categoryTable("Income", current.income, previous.income, current.totalIncome, previous.totalIncome);
-    categoryTable("Expenditure", current.expense, previous.expense, current.totalExpense, previous.totalExpense);
-    comparisonRow("Surplus / (deficit)", current.surplus, previous.surplus, true);
+    newPage("Income and expenditure", `1 November ${current.year - 1} to 31 October ${current.year}`);
+    categoryTable("Income", current.income, current.totalIncome);
+    categoryTable("Expenditure", current.expense, current.totalExpense);
+    row("Surplus / (deficit)", current.surplus, true);
     paragraph("Money collected or spent for Thommo's Charity is excluded from section income and expenditure. The section's own charity contribution is included as expenditure. Juniors' receipts and payments remain in their recorded categories; the movement in funds held is reconciled below.", 9);
     newPage("Year-end financial position");
     section("Opening position"); row("Carried Forward - bank", current.openingBank); row(`Cash at 31 October ${current.year - 1}`, current.openingCash);
@@ -117,7 +97,7 @@ export async function renderAnnualPack(current: AnnualReport, previous: AnnualRe
     row("Closing available bank and cash", current.closingFunds, true);
     if (current.year === 2026 && current.code === "MENS" && current.openingBank === 741545) paragraph("Opening reconciliation: nine December entries in the source workbook were dated 2025 within the 2024/25 transaction sequence. Correcting them to December 2024 increases the 1 November 2025 opening bank balance by £758.51. Total receipts, payments and the closing bank balance across all years are unchanged. Original dates are retained in the correction audit trail. The prior workbook summary also added £290 labelled Stock to income; that manual amount is not treated as a bank receipt here.", 9);
     if (current.year === 2026 && current.code === "CLUB" && current.openingCash === 0 && current.closingCash === 0) paragraph("Opening reconciliation: the 1 November 2025 bank balance agrees to the source workbook. Opening and closing cash are confirmed as nil.", 9);
-    paragraph("These are management accounts on a recorded receipts-and-payments basis, with separately identified funds and year-end assets/liabilities. Comparative figures are recalculated from the dated ledger and may differ from the original workbook summaries. Historical appeals outside the current charity ledger have not been retrospectively reclassified.", 9);
+    paragraph("These are management accounts on a recorded receipts-and-payments basis, with separately identified funds and year-end assets/liabilities. Opening balances are carried forward from the dated ledger.", 9);
     section("Review status");
     if (current.issues.length) current.issues.forEach(issue => paragraph(issue, 10, amber)); else paragraph("Cash, Juniors' funds and other debtors/creditors are recorded. No uncategorised or flagged charity transactions remain for this period.");
     if (y < 300) newPage("Stock and AGM approval");
@@ -140,6 +120,6 @@ export async function renderAnnualPack(current: AnnualReport, previous: AnnualRe
   return Buffer.from(await pdf.save());
 }
 export async function generateAnnualPdf(code: "MENS" | "CLUB", year: number, summaryOnly = false) {
-  const { current, previous } = await loadAnnualAccounts(code, year);
-  return renderAnnualPack(current, previous, summaryOnly);
+  const { current } = await loadAnnualAccounts(code, year);
+  return renderAnnualPack(current, summaryOnly);
 }
