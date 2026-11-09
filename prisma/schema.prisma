@@ -463,3 +463,23 @@ model CashYearEndHistory {
 
   @@unique([cashCountId, version])
 }
+
+// Every preparation freezes a separate PDF. Approved records are never overwritten.
+model AnnualAccountsApproval {
+  id                 String      @id @default(cuid())
+  accountCode        AccountCode
+  year               Int
+  unsignedPdf        String      @db.Text
+  signedPdf          String?     @db.Text
+  agmDate            String?
+  treasurerName      String      @default("Craig Reid")
+  captainName        String      @default("Paul Thompson")
+  treasurerSignature String?     @db.Text
+  captainSignature   String?     @db.Text
+  preparedById       String
+  preparedAt         DateTime    @default(now())
+  signedById         String?
+  signedAt           DateTime?
+
+  @@index([accountCode, year, signedAt])
+}

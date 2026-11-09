@@ -165,6 +165,12 @@ export default async function AccountsSummaryPage({
           <div className="mt-4 flex flex-wrap gap-3"><a href={`/accounts/annual-pdf?account=MENS&year=${year}`} className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Men’s {year} PDF</a><a href={`/accounts/annual-pdf?account=CLUB&year=${year}`} className="rounded-lg bg-emerald-900 px-4 py-2 text-sm font-semibold text-white">Download Club {year} PDF</a></div>
         </section>
 
+        <section className="mt-6 rounded-xl border border-emerald-200 bg-white p-5">
+          <h2 className="text-lg font-bold">AGM sign-off</h2>
+          <p className="mt-1 text-sm text-slate-600">Draw signatures for Craig Reid (Treasurer) and Paul Thompson (Captain), record the AGM date and save the approved accounts PDF.</p>
+          <div className="mt-4 flex flex-wrap gap-3"><a className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white" href={`/accounts/agm?account=MENS&year=${year}`}>Men’s {year} sign-off</a><a className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white" href={`/accounts/agm?account=CLUB&year=${year}`}>Club {year} sign-off</a></div>
+        </section>
+
         <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-semibold">Cash on hand at 31 October {year}</h2><p className="mt-1 text-sm text-slate-600">Year-end cash counts are separate from bank transactions.</p></div><a href={`/accounts/cash?year=${year}`} className="rounded-lg bg-emerald-800 px-4 py-2 text-sm font-semibold text-white">Enter cash balances</a></div>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">{relevantAccounts.map(account => { const cash = cashCounts.find(count => count.accountCode === account.code); return <div key={account.code}><p className="text-sm text-slate-500">{account.name}</p><p className="text-xl font-bold">{cash ? money(pounds(cash.amountPence)) : "Not entered"}</p></div>; })}</div>

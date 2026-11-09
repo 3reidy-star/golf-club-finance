@@ -21,14 +21,19 @@ function route(cashCount = null) {
   class NextResponse { constructor(body, opts = {}) { this.body = body; this.status = opts.status ?? 200; } }
   const mocks = {
     'next/server': { NextResponse },
-    '@/auth': { auth: async () => ({ user: { role: 'TREASURER' } }) },
+    '@/lib/invoice-auth': { invoiceUser: async () => ({ id: 'treasurer' }) },
     '@/lib/prisma': { prisma: {
+      annualAccountsApproval: { findFirst: async () => null },
       financeAccount: { findUnique: async args => ({ openingBalance: 1000, transactions: bank.filter(t => t.transactionDate < args.include.transactions.where.transactionDate.lt) }) },
       charityEntry: { findMany: async () => entries },
       cashYearEnd: { findUnique: async ({ where }) => cashCount && where.accountCode_year.accountCode === cashCount.accountCode && where.accountCode_year.year === cashCount.year ? cashCount : null },
     } },
     '@/lib/charity-ledger': charity,
   };
+  const generator = {};
+  const generatorCode = ts.transpileModule(readFileSync(new URL('../lib/annual-accounts-pdf.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  new Function('exports', 'require', generatorCode)(generator, name => Object.hasOwn(mocks, name) ? mocks[name] : require(name));
+  mocks['@/lib/annual-accounts-pdf'] = generator;
   const exports = {};
   const code = ts.transpileModule(readFileSync(new URL('../app/accounts/annual-pdf/route.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
   new Function('exports', 'require', code)(exports, name => Object.hasOwn(mocks, name) ? mocks[name] : require(name));
