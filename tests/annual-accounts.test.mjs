@@ -10,7 +10,7 @@ function load(path) {
  new Function('exports', 'require', source)(exports, name => name === './charity-ledger' ? load('../lib/charity-ledger.ts') : require(name));
  return exports;
 }
-const { calculateAnnualAccounts } = load('../lib/annual-accounts.ts');
+const { calculateAnnualAccounts, annualActivityRows } = load('../lib/annual-accounts.ts');
 const day = value => new Date(value+'T00:00:00Z');
 const row = (id, date, credit, debit = 0, category = 'Competition Fees') => ({ id, transactionDate: day(date), credit, debit, category });
 const account = rows => ({ code: 'CLUB', name: 'Club Account', openingBalance: 100, openingDate: day('2024-01-01'), transactions: rows });
@@ -38,4 +38,15 @@ test('restricted funds and changes in cash reconcile the available balance', () 
  const r=calculateAnnualAccounts(a,2026,[{year:2025,amountPence:0},{year:2026,amountPence:24500}],[],reviews);
  assert.equal(r.charity.closing,10000); assert.equal(r.totalIncome,50000);
  assert.equal(r.openingFunds+r.surplus+r.juniorOpening-r.juniorClosing+r.closingCash-r.openingCash,r.closingFunds);
+});
+
+test('activity comparison pairs related fees and costs and preserves both totals', () => {
+ const report = { income: [{name:'Curry Cup Fees',amount:100500},{name:'Curry Cup Cost',amount:18350},{name:'Junior Comp Fee',amount:2823},{name:'Other',amount:50}], expense: [{name:'Curry Cup Fees',amount:51750},{name:'Curry Cup Cost',amount:128100},{name:'Junior Sponsorship',amount:135194},{name:'Junior Competition Cost',amount:110350}] };
+ const rows = annualActivityRows(report);
+ assert.deepEqual(rows.find(row=>row.name==='Curry Cup'),{name:'Curry Cup',revenue:118850,expenditure:179850,net:-61000});
+ assert.equal(rows.find(row=>row.name==='Juniors').revenue,2823);
+ assert.equal(rows.find(row=>row.name==='Juniors').expenditure,245544);
+ assert.equal(rows.reduce((sum,row)=>sum+row.revenue,0),report.income.reduce((sum,row)=>sum+row.amount,0));
+ assert.equal(rows.reduce((sum,row)=>sum+row.expenditure,0),report.expense.reduce((sum,row)=>sum+row.amount,0));
+ assert.ok(rows.find(row=>row.name==='Other'));
 });

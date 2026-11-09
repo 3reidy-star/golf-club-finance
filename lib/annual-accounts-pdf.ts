@@ -1,7 +1,7 @@
 import { PDFDocument, rgb } from "pdf-lib";
 import { embedReportFont } from "./pdf-fonts";
 import { loadAnnualAccounts } from "./annual-accounts-data";
-import type { AnnualReport } from "./annual-accounts";
+import { annualActivityRows, type AnnualReport } from "./annual-accounts";
 const money = (value: number | null) => value === null ? "Not confirmed" : `${value < 0 ? "-" : ""}£${(Math.abs(value) / 100).toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export async function renderAnnualPack(current: AnnualReport, summaryOnly = false) {
@@ -45,14 +45,20 @@ export async function renderAnnualPack(current: AnnualReport, summaryOnly = fals
     for (let i = 0; i < lines.length; i++) text(lines[i], L + 3, y - i * 13, 10, strong);
     const amount = money(value); text(amount, R - (strong ? bold : normal).widthOfTextAtSize(amount, 11) - 3, y, 11, strong, value === null ? amber : navy); y -= h;
   }
-  function tableHeading() { text("Category", L + 3, y, 9, true, grey); text(String(current.year), R - 25, y, 9, true, grey); y -= 24; }
-  function categoryTable(title: string, items: AnnualReport["income"], total: number) {
-    room(130, title); section(title); tableHeading();
-    for (const item of items) {
-      if (y < 115) { newPage(`${title} - continued`); tableHeading(); }
-      row(item.name, item.amount);
+  function activityHeading() {
+    text("Activity", L + 3, y, 9, true, grey);
+    for (const [label, right] of [["Revenue", 350], ["Expenditure", 448], ["Net", R]] as const) text(label, right - normal.widthOfTextAtSize(label, 9), y, 9, true, grey);
+    y -= 25;
+  }
+  function activityRow(name: string, revenue: number, expenditure: number, net: number, total = false) {
+    const lines = wrap(name, 192, 10), height = Math.max(26, lines.length * 13 + 9);
+    if (y - height < 76) { newPage("Revenue and expenditure - continued"); activityHeading(); }
+    if (total) page.drawRectangle({ x: L - 5, y: y - height + 11, width: R - L + 10, height, color: pale });
+    lines.forEach((value, i) => text(value, L + 3, y - i * 13, 10, total));
+    for (const [value, right] of [[revenue, 350], [expenditure, 448], [net, R]] as const) {
+      const display = money(value); text(display, right - normal.widthOfTextAtSize(display, 10), y, 10, total);
     }
-    row(`Total ${title.toLowerCase()}`, total, true);
+    y -= height;
   }
   header("Annual accounts - AGM summary", `1 November ${current.year - 1} to 31 October ${current.year}`);
   // This first page stands alone as the presentation handout.
@@ -61,10 +67,9 @@ export async function renderAnnualPack(current: AnnualReport, summaryOnly = fals
     const x = L + i * 171; page.drawRectangle({ x, y: 571, width: 157, height: 77, color: pale });
     text(label, x + 10, 628, 8, true, green); text(money(value), x + 10, 596, value === null ? 14 : 19, true);
   });
-  y = 544; section("The year in figures"); tableHeading();
-  row("Income after recorded charity allocations", current.totalIncome);
-  row("Expenditure after recorded charity allocations", current.totalExpense);
-  row(current.surplus >= 0 ? "Surplus on the recorded accounts basis" : "Deficit on the recorded accounts basis", current.surplus, true);
+  y = 544; section("The year in figures"); activityHeading();
+  activityRow("Annual total", current.totalIncome, current.totalExpense, current.surplus, true);
+  paragraph("Net shows revenue less expenditure. A negative amount is a deficit.", 9);
   section("Year-end funds");
   row("Bank and cash on hand", current.closingCash === null ? null : current.closingBank + current.closingCash);
   if (current.code === "MENS") row("Less Thommo's Charity funds held", -current.charity.closing);
@@ -77,10 +82,11 @@ export async function renderAnnualPack(current: AnnualReport, summaryOnly = fals
   if (current.issues.length) text(`Draft: ${current.issues.length} review item(s). See the reconciliation notes.`, L, 88, 9, true, amber);
   else text("Prepared for AGM approval. Signatures are added when approved.", L, 88, 9, false, grey);
   if (!summaryOnly) {
-    newPage("Income and expenditure", `1 November ${current.year - 1} to 31 October ${current.year}`);
-    categoryTable("Income", current.income, current.totalIncome);
-    categoryTable("Expenditure", current.expense, current.totalExpense);
-    row("Surplus / (deficit)", current.surplus, true);
+    newPage("Revenue and expenditure", `1 November ${current.year - 1} to 31 October ${current.year}`);
+    activityHeading();
+    for (const item of annualActivityRows(current)) activityRow(item.name, item.revenue, item.expenditure, item.net);
+    activityRow("Total", current.totalIncome, current.totalExpense, current.surplus, true);
+    paragraph("Related fees and costs are grouped by activity. Net shows revenue less expenditure; negative amounts are deficits.", 9);
     paragraph("Money collected or spent for Thommo's Charity is excluded from section income and expenditure. The section's own charity contribution is included as expenditure. Juniors' receipts and payments remain in their recorded categories; the movement in funds held is reconciled below.", 9);
     newPage("Year-end financial position");
     section("Opening position"); row("Carried Forward - bank", current.openingBank); row(`Cash at 31 October ${current.year - 1}`, current.openingCash);

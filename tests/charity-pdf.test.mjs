@@ -58,7 +58,7 @@ test('AGM statement shows the contribution and one charity liability', async () 
   const text = await document(2026);
   assert.match(text, /Annual accounts - AGM summary/);
   assert.match(text, /Awards Night\s+£500\.00/);
-  assert.match(text, /Charity contribution\s+£83\.00/);
+  assert.match(text, /Charity contribution\s+£0\.00\s+£83\.00/);
   assert.match(text, /Less Thommo's Charity\s+-£183\.00/);
   assert.match(text, /Account - closing bank\s+£1,600\.00/);
   assert.match(text, /Less Thommo's Charity\s+-£183\.00/);
@@ -69,7 +69,7 @@ test('November payment clears liability without a second charity expense', async
   assert.match(text, /Less Thommo's Charity brought forward\s+-£183\.00/);
   assert.match(text, /Thommo's Charity\s+£0\.00/);
   assert.match(text, /Account - closing bank\s+£1,417\.00/);
-  assert.doesNotMatch(text, /Charity contribution\s+£83\.00/);
+  assert.doesNotMatch(text, /Charity contribution\s+£0\.00\s+£83\.00/);
 });
 test('cash is included in the net balance and missing counts remain visible', async () => {
   const absent = await document(2026);

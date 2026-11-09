@@ -49,3 +49,27 @@ export function calculateAnnualAccounts(account: AnnualAccount, year: number, ca
   return { code: account.code, name: account.name, year, start, end, openingBank, closingBank, openingCash, closingCash, juniorOpening, juniorClosing, openingFunds, closingFunds, debtors, otherCreditors, netAssetsBeforeStock, stockItems, stockValue, commentary: review?.commentary ?? "", charity, income, expense, totalIncome, totalExpense, surplus: totalIncome - totalExpense, credit, debit, bankMovement: credit - debit, issues, rows: rows.length };
 }
 export type AnnualReport = ReturnType<typeof calculateAnnualAccounts>;
+
+// Present related fee/cost categories together, without changing ledger entries.
+export function annualActivityRows(report: Pick<AnnualReport, "income" | "expense">) {
+  const groups: Record<string, string> = {
+    "Competition Fees": "Competitions", "Competition Prizes": "Competitions",
+    "Curry Cup Fees": "Curry Cup", "Curry Cup Cost": "Curry Cup",
+    "Jubilee Fees": "Jubilee", "Jubilee Costs": "Jubilee",
+    "Junior Comp Fee": "Juniors", "Junior Competition Cost": "Juniors", "Junior Sponsorship": "Juniors",
+    "Leslie Wood Comp Fees": "Leslie Wood", "Leslie Wood Costs": "Leslie Wood",
+    "Norman Plum Fees": "Norman Plum", "Norman Plum Costs": "Norman Plum",
+    "Thornton Cup Fees": "Thornton Cup", "Thornton Cup Costs": "Thornton Cup",
+    "Seniors Comp Fees": "Seniors", "Seniors Comp Costs": "Seniors",
+    "Charity Comp Fee": "Charity competitions", "Charity Comp Costs": "Charity competitions",
+  };
+  const rows = new Map<string, { name: string; revenue: number; expenditure: number; net: number }>();
+  for (const [items, field] of [[report.income, "revenue"], [report.expense, "expenditure"]] as const) {
+    for (const item of items) {
+      const name = groups[item.name] ?? item.name;
+      const row = rows.get(name) ?? { name, revenue: 0, expenditure: 0, net: 0 };
+      row[field] += item.amount; row.net = row.revenue - row.expenditure; rows.set(name, row);
+    }
+  }
+  return [...rows.values()].sort((a, b) => a.name.localeCompare(b.name, "en-GB"));
+}
